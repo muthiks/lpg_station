@@ -66,7 +66,7 @@ class _SaleCardState extends State<SaleCard> {
           children: [
             // Header Section - Customer Name & Status
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.fromLTRB(12, 5, 12, 5),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.15),
                 borderRadius: const BorderRadius.only(
@@ -80,7 +80,7 @@ class _SaleCardState extends State<SaleCard> {
                     child: Text(
                       customerName,
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 13,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
@@ -92,11 +92,11 @@ class _SaleCardState extends State<SaleCard> {
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
-                      vertical: 6,
+                      vertical: 5,
                     ),
                     decoration: BoxDecoration(
                       color: _getStatusColor(status),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
                       status,
@@ -162,7 +162,7 @@ class _SaleCardState extends State<SaleCard> {
                       Text(
                         _formatCurrency(total),
                         style: TextStyle(
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
@@ -183,7 +183,7 @@ class _SaleCardState extends State<SaleCard> {
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
-                  vertical: 10,
+                  vertical: 5,
                 ),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.1),
@@ -236,7 +236,7 @@ class _SaleCardState extends State<SaleCard> {
                         // Table Header
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
+                            horizontal: 10,
                             vertical: 8,
                           ),
                           decoration: BoxDecoration(
@@ -246,7 +246,7 @@ class _SaleCardState extends State<SaleCard> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               SizedBox(
-                                width: 90,
+                                width: 60,
                                 child: Text(
                                   'Item',
                                   style: TextStyle(
@@ -256,6 +256,19 @@ class _SaleCardState extends State<SaleCard> {
                                   ),
                                 ),
                               ),
+                              SizedBox(
+                                width: 70,
+                                child: Text(
+                                  'Status',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+
                               SizedBox(
                                 width: 40,
                                 child: Text(
@@ -269,7 +282,7 @@ class _SaleCardState extends State<SaleCard> {
                                 ),
                               ),
                               SizedBox(
-                                width: 100,
+                                width: 80,
                                 child: Text(
                                   'Price',
                                   textAlign: TextAlign.right,
@@ -281,7 +294,7 @@ class _SaleCardState extends State<SaleCard> {
                                 ),
                               ),
                               SizedBox(
-                                width: 100,
+                                width: 95,
                                 child: Text(
                                   'Amount',
                                   textAlign: TextAlign.right,
@@ -301,13 +314,14 @@ class _SaleCardState extends State<SaleCard> {
                           final index = entry.key;
                           final detail = entry.value;
                           final lubName = detail['LubName'] as String;
+                          final cylinderStatus = detail['CylStatus'] as String;
                           final quantity = detail['Quantity'] as num;
                           final price = detail['Price'] as num;
                           final amount = detail['Amount'] as num;
 
                           return Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
+                              horizontal: 10,
                               vertical: 10,
                             ),
                             decoration: BoxDecoration(
@@ -324,7 +338,7 @@ class _SaleCardState extends State<SaleCard> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 SizedBox(
-                                  width: 90,
+                                  width: 60,
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 6,
@@ -349,6 +363,17 @@ class _SaleCardState extends State<SaleCard> {
                                   ),
                                 ),
                                 SizedBox(
+                                  width: 70,
+                                  child: Text(
+                                    cylinderStatus.toString(),
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(
                                   width: 40,
                                   child: Text(
                                     quantity.toString(),
@@ -360,7 +385,7 @@ class _SaleCardState extends State<SaleCard> {
                                   ),
                                 ),
                                 SizedBox(
-                                  width: 100,
+                                  width: 80,
                                   child: Text(
                                     _formatCurrency(price),
                                     textAlign: TextAlign.right,
@@ -372,13 +397,12 @@ class _SaleCardState extends State<SaleCard> {
                                   ),
                                 ),
                                 SizedBox(
-                                  width: 100,
+                                  width: 95,
                                   child: Text(
                                     _formatCurrency(amount),
                                     textAlign: TextAlign.right,
                                     style: const TextStyle(
                                       fontSize: 11,
-                                      fontWeight: FontWeight.bold,
                                       color: Colors.white,
                                     ),
                                     overflow: TextOverflow.ellipsis,
@@ -397,7 +421,7 @@ class _SaleCardState extends State<SaleCard> {
             // Balance Section
             if (balance > 0)
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.fromLTRB(12, 5, 12, 5),
                 decoration: BoxDecoration(
                   color: Colors.red.withOpacity(0.2),
                   borderRadius: const BorderRadius.only(
@@ -434,7 +458,7 @@ class _SaleCardState extends State<SaleCard> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: AppTheme.primaryBlue,
+                        color: Colors.deepPurple,
                       ),
                     ),
                   ],

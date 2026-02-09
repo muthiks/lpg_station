@@ -408,6 +408,7 @@ class _SaleListState extends State<SaleList> {
                       horizontal: 16,
                       vertical: 12,
                     ),
+                    isDense: true,
                   ),
                   isExpanded: true,
                   items: stations.map((station) {
@@ -457,7 +458,7 @@ class _SaleListState extends State<SaleList> {
                             color: selectedCustomer != null
                                 ? Colors.black87
                                 : Colors.grey[600],
-                            fontSize: 16,
+                            fontSize: 14,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -509,7 +510,7 @@ class _SaleListState extends State<SaleList> {
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.transparent,
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(20),
               topRight: Radius.circular(20),
@@ -520,7 +521,7 @@ class _SaleListState extends State<SaleList> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryOrange,
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -533,7 +534,7 @@ class _SaleListState extends State<SaleList> {
                 SizedBox(width: 8),
                 Text(
                   'Add Sale',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
               ],
             ),

@@ -1,13 +1,17 @@
 class SaleItem {
   final int cylinderTypeId;
   final String cylinderTypeName;
-  final int quantity;
+  int quantity;
   final double price;
-  final double amount;
+  double amount;
   final double cylinderPrice;
-  final double cylinderAmount;
+  double cylinderAmount;
   final String cylinderStatus; // Lease or Sale
   final String priceType; // Standard or Custom
+  final bool isTagged;
+  final List<String> taggedBarcodes;
+
+  double get totalAmount => amount + cylinderAmount;
 
   SaleItem({
     required this.cylinderTypeId,
@@ -19,5 +23,7 @@ class SaleItem {
     required this.cylinderAmount,
     required this.cylinderStatus,
     required this.priceType,
-  });
+    this.isTagged = false,
+    List<String>? taggedBarcodes,
+  }) : taggedBarcodes = taggedBarcodes ?? [];
 }

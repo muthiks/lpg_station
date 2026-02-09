@@ -13,6 +13,13 @@ class AuthService {
   Timer? _authTimer;
   String? _userRole;
 
+  // ------------------------
+  // API
+  // ------------------------
+  static const String _baseUrl = 'https://10.0.2.2:7179/api/Account';
+  // static const String _baseUrl =
+  //     'https://luqman-staging.lqadmin.com/api/Account';
+
   factory AuthService() {
     return instance;
   }
@@ -52,13 +59,6 @@ class AuthService {
 
     return false;
   }
-
-  // ------------------------
-  // API
-  // ------------------------
-  static const String _baseUrl = 'https://10.0.2.2:7179/api/Account';
-  // static const String _baseUrl =
-  //     'https://luqman-staging.lqadmin.com/api/Account';
 
   Future<Map<String, dynamic>> login(String userName, String password) async {
     try {
