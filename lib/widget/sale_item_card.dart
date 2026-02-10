@@ -22,96 +22,156 @@ class SaleItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isAccessoryOnly = item.cylinderTypeName == 'Accessory Only';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       color: Colors.white.withOpacity(0.1),
       child: Column(
         children: [
-          ListTile(
-            leading: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryOrange,
-                borderRadius: BorderRadius.circular(8),
+          // Cylinder item display
+          if (!isAccessoryOnly)
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryOrange,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  item.cylinderTypeName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
               ),
-              child: Text(
-                item.cylinderTypeName,
+              title: Text(
+                item.isTagged
+                    ? 'Tagged (${item.taggedBarcodes.length} scanned)'
+                    : 'Qty: ${item.quantity} × ${formatCurrency(item.price)}',
                 style: const TextStyle(
                   color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-            ),
-            title: Text(
-              item.isTagged
-                  ? 'Tagged (${item.taggedBarcodes.length} scanned)'
-                  : 'Qty: ${item.quantity} × ${formatCurrency(item.price)}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            subtitle: Row(
-              children: [
-                Text(
-                  item.cylinderStatus,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-                if (item.isTagged) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryOrange,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'TAGGED',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+              subtitle: Row(
+                children: [
+                  Text(
+                    item.cylinderStatus,
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
-                ],
-              ],
-            ),
-            trailing: hideActions
-                ? Text(
-                    formatCurrency(item.totalAmount),
-                    style: TextStyle(
-                      color: AppTheme.primaryOrange,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  )
-                : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        formatCurrency(item.totalAmount),
+                  if (item.isTagged) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryOrange,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'TAGGED',
                         style: TextStyle(
-                          color: AppTheme.primaryOrange,
+                          color: Colors.white,
+                          fontSize: 10,
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.white),
-                        onPressed: onEdit,
+                    ),
+                  ],
+                ],
+              ),
+              trailing: hideActions
+                  ? Text(
+                      formatCurrency(item.totalAmount),
+                      style: TextStyle(
+                        color: AppTheme.primaryOrange,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: onDelete,
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          formatCurrency(item.totalAmount),
+                          style: TextStyle(
+                            color: AppTheme.primaryOrange,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit, color: Colors.white),
+                          onPressed: onEdit,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: onDelete,
+                        ),
+                      ],
+                    ),
+            ),
+
+          // Accessory-only item display
+          if (isAccessoryOnly && item.hasAccessories)
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryOrange,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.build_circle, color: Colors.white, size: 18),
+              ),
+              title: Text(
+                item.accessoryName ?? 'Accessory',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+              subtitle: Text(
+                'Qty: ${item.accessoryQuantity} × ${formatCurrency(item.accessoryPrice ?? 0)}',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              trailing: hideActions
+                  ? Text(
+                      formatCurrency(item.totalAmount),
+                      style: TextStyle(
+                        color: AppTheme.primaryOrange,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
-                    ],
-                  ),
-          ),
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          formatCurrency(item.totalAmount),
+                          style: TextStyle(
+                            color: AppTheme.primaryOrange,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit, color: Colors.white),
+                          onPressed: onEdit,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: onDelete,
+                        ),
+                      ],
+                    ),
+            ),
+
           // Show scanned barcodes for tagged items
           if (item.isTagged && item.taggedBarcodes.isNotEmpty)
             Container(

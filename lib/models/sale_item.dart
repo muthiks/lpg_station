@@ -6,12 +6,26 @@ class SaleItem {
   double amount;
   final double cylinderPrice;
   double cylinderAmount;
-  final String cylinderStatus; // Lease or Sale
-  final String priceType; // Standard or Custom
+  final String cylinderStatus; // Refill, Complete, or Lease
+  final String priceType; // Retail, Custom, or KG
   final bool isTagged;
   final List<String> taggedBarcodes;
 
-  double get totalAmount => amount + cylinderAmount;
+  // Accessory fields
+  final String? accessoryId;
+  final String? accessoryName;
+  final int? accessoryQuantity;
+  final double? accessoryPrice;
+  final double? accessoryAmount;
+  final String? accessoryPriceType;
+
+  double get totalAmount {
+    final accessories = accessoryAmount ?? 0.0;
+    return amount + cylinderAmount + accessories;
+  }
+
+  bool get hasAccessories =>
+      accessoryId != null && accessoryAmount != null && accessoryAmount! > 0;
 
   SaleItem({
     required this.cylinderTypeId,
@@ -25,5 +39,11 @@ class SaleItem {
     required this.priceType,
     this.isTagged = false,
     List<String>? taggedBarcodes,
+    this.accessoryId,
+    this.accessoryName,
+    this.accessoryQuantity,
+    this.accessoryPrice,
+    this.accessoryAmount,
+    this.accessoryPriceType,
   }) : taggedBarcodes = taggedBarcodes ?? [];
 }

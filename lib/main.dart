@@ -7,6 +7,7 @@ import 'package:lpg_station/screens/login.dart';
 import 'package:lpg_station/screens/profile.dart';
 import 'package:lpg_station/screens/sale_container.dart';
 import 'package:lpg_station/screens/splash_screen.dart';
+import 'package:lpg_station/screens/store_container.dart';
 import 'package:lpg_station/services/auth_gate.dart';
 import 'package:lpg_station/services/auth_service.dart';
 import 'package:lpg_station/services/role_config.dart';
@@ -68,7 +69,7 @@ class _MainLayoutState extends State<MainLayout> {
     super.initState();
     screens = [
       const Text('Delivery'),
-      const Text('Store'),
+      const StockTabsContainer(),
       const Text('Returns'),
       const SaleContainer(),
       const Text('Payments'),

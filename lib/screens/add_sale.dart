@@ -447,7 +447,7 @@ class _AddSaleState extends State<AddSale> {
                         ],
                       ),
                       child: DropdownButtonFormField<String>(
-                        value: selectedStation,
+                        initialValue: selectedStation,
                         decoration: InputDecoration(
                           prefixIcon: Icon(
                             Icons.warehouse,
@@ -573,7 +573,7 @@ class _AddSaleState extends State<AddSale> {
                         ],
                       ),
                       child: DropdownButtonFormField<String>(
-                        value: deliveryType,
+                        initialValue: deliveryType,
                         decoration: InputDecoration(
                           prefixIcon: Icon(
                             Icons.local_shipping,
@@ -635,7 +635,7 @@ class _AddSaleState extends State<AddSale> {
                           ],
                         ),
                         child: DropdownButtonFormField<String>(
-                          value: selectedDeliveryGuy,
+                          initialValue: selectedDeliveryGuy,
                           decoration: InputDecoration(
                             prefixIcon: Icon(
                               Icons.person_pin,
