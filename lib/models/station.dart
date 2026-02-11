@@ -1,17 +1,13 @@
 class Station {
-  final int id;
-  final String name;
+  final int stationID;
+  final String stationName;
 
-  Station({required this.id, required this.name});
+  Station({required this.stationID, required this.stationName});
 
   factory Station.fromJson(Map<String, dynamic> json) {
     return Station(
-      id: json['StationID'] as int,
-      name: json['StationName'] as String,
+      stationID: json['StationID'] as int,
+      stationName: json['StationName'] as String,
     );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {'StationID': id, 'StationName': name};
   }
 }

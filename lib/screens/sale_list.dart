@@ -1,6 +1,13 @@
+// lib/screens/sale_list.dart
+
+import 'dart:developer';
 import 'package:flutter/material.dart';
+import 'package:lpg_station/models/customer_model.dart';
+import 'package:lpg_station/models/stock.dart';
 import 'package:lpg_station/screens/sale_card.dart';
 import 'package:lpg_station/theme/theme.dart';
+import 'package:lpg_station/models/sale_model.dart';
+import 'package:lpg_station/services/api_service.dart';
 
 class SaleList extends StatefulWidget {
   final VoidCallback? onNavigateToAdd;
@@ -11,175 +18,154 @@ class SaleList extends StatefulWidget {
 }
 
 class _SaleListState extends State<SaleList> {
-  // Sample data - replace with actual API data
-  String? selectedStation;
-  String? selectedCustomer;
+  bool _isLoadingStations = true;
+  bool _isLoadingCustomers = false;
+  bool _isLoadingSales = false;
+  String? _errorMessage;
 
-  final List<String> stations = ['Station 1', 'Station 2', 'Station 3'];
+  List<StationDto> _stations = [];
+  List<CustomerDto> _customers = [];
+  List<SaleDto> _sales = [];
 
-  List<String> customers = [];
-
-  // Sample sales data - replace with actual API response
-  final List<Map<String, dynamic>> sales = [
-    {
-      "LpgSaleID": 23679,
-      "SaleDate": "2026-02-06T00:00:00",
-      "Balance": 2200,
-      "CustomerID": 7780,
-      "CustomerName": "JAMWAS BEAUTY SHOP- CBD",
-      "InvoiceNo": "3247/Feb/12-26",
-      "DeliveryGuy": "N/A",
-      "Dispatcher": null,
-      "Total": 2200,
-      "Status": "Draft",
-      "IsApproved": true,
-      "Comments": "",
-      "CustomerType": "Prepaid",
-      "SaleDetails": [
-        {
-          "SaleDetailID": 26177,
-          "LpgSaleID": 23679,
-          "CylinderID": 1,
-          "LubId": 1,
-          "PriceType": "Custom",
-          "Price": 1100,
-          "CylinderPrice": 2500,
-          "CylinderAmount": 0,
-          "Quantity": 2,
-          "Amount": 2200,
-          "CylStatus": "Lease",
-          "LubName": "6KG",
-          "Capacity": 6,
-        },
-      ],
-    },
-    {
-      "LpgSaleID": 23678,
-      "SaleDate": "2026-02-06T00:00:00",
-      "Balance": 16000,
-      "CustomerID": 7644,
-      "CustomerName": "CAFE CASSIA",
-      "InvoiceNo": "3246/Feb/12-26",
-      "DeliveryGuy": "N/A",
-      "Dispatcher": null,
-      "Total": 16000,
-      "Status": "Draft",
-      "IsApproved": true,
-      "Comments": "",
-      "CustomerType": "Prepaid",
-      "SaleDetails": [
-        {
-          "SaleDetailID": 26176,
-          "LpgSaleID": 23678,
-          "CylinderID": 4,
-          "LubId": 4,
-          "PriceType": "Custom",
-          "Price": 8000,
-          "CylinderPrice": 12000,
-          "CylinderAmount": 0,
-          "Quantity": 2,
-          "Amount": 16000,
-          "CylStatus": "Lease",
-          "LubName": "50KG",
-          "Capacity": 50,
-        },
-      ],
-    },
-    {
-      "LpgSaleID": 23677,
-      "SaleDate": "2026-02-05T00:00:00",
-      "Balance": 35000,
-      "CustomerID": 7799,
-      "CustomerName": "HABESHA KILIMANI",
-      "InvoiceNo": "3245/Feb/12-26",
-      "DeliveryGuy": "N/A",
-      "Dispatcher": null,
-      "Total": 35000,
-      "Status": "Draft",
-      "IsApproved": true,
-      "Comments": "",
-      "CustomerType": "Prepaid",
-      "SaleDetails": [
-        {
-          "SaleDetailID": 26173,
-          "LpgSaleID": 23677,
-          "CylinderID": 1,
-          "LubId": 1,
-          "PriceType": "Custom",
-          "Price": 1000,
-          "CylinderPrice": 2500,
-          "CylinderAmount": 0,
-          "Quantity": 3,
-          "Amount": 3000,
-          "CylStatus": "Lease",
-          "LubName": "6KG",
-          "Capacity": 6,
-        },
-        {
-          "SaleDetailID": 26174,
-          "LpgSaleID": 23677,
-          "CylinderID": 2,
-          "LubId": 2,
-          "PriceType": "Custom",
-          "Price": 2000,
-          "CylinderPrice": 3650,
-          "CylinderAmount": 0,
-          "Quantity": 2,
-          "Amount": 4000,
-          "CylStatus": "Lease",
-          "LubName": "13KG",
-          "Capacity": 13,
-        },
-        {
-          "SaleDetailID": 26175,
-          "LpgSaleID": 23677,
-          "CylinderID": 4,
-          "LubId": 4,
-          "PriceType": "Custom",
-          "Price": 7000,
-          "CylinderPrice": 12000,
-          "CylinderAmount": 0,
-          "Quantity": 4,
-          "Amount": 28000,
-          "CylStatus": "Lease",
-          "LubName": "50KG",
-          "Capacity": 50,
-        },
-      ],
-    },
-  ];
+  int? _selectedStationId;
+  int? _selectedCustomerId;
 
   @override
   void initState() {
     super.initState();
-    _loadCustomers();
+    _loadInitialData();
   }
 
-  void _loadCustomers() {
-    // Extract unique customers from sales data
-    final customerSet = sales
-        .map((sale) => sale['CustomerName'] as String)
-        .toSet()
-        .toList();
+  Future<void> _loadInitialData() async {
     setState(() {
-      customers = ['All Customers', ...customerSet];
+      _isLoadingStations = true;
+      _errorMessage = null;
     });
+
+    try {
+      final stations = await ApiService.getUserStations();
+
+      setState(() {
+        _stations = stations;
+        _isLoadingStations = false;
+      });
+
+      // Load all sales for all stations
+      _loadSales(null);
+    } catch (e) {
+      setState(() {
+        _isLoadingStations = false;
+        _errorMessage = 'Failed to load stations: ${e.toString()}';
+      });
+      log('Error loading stations: $e');
+    }
   }
 
-  List<Map<String, dynamic>> get filteredSales {
-    return sales.where((sale) {
-      if (selectedCustomer != null &&
-          selectedCustomer != 'All Customers' &&
-          sale['CustomerName'] != selectedCustomer) {
-        return false;
-      }
-      return true;
-    }).toList();
+  Future<void> _loadCustomers(int stationId) async {
+    setState(() {
+      _isLoadingCustomers = true;
+    });
+
+    try {
+      final customers = await ApiService.getCustomersByStation(stationId);
+
+      setState(() {
+        _customers = customers;
+        _isLoadingCustomers = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingCustomers = false;
+      });
+      log('Error loading customers: $e');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load customers: ${e.toString()}'),
+          backgroundColor: AppTheme.primaryOrange,
+        ),
+      );
+    }
+  }
+
+  Future<void> _loadSales(int? stationId) async {
+    setState(() {
+      _isLoadingSales = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final sales = await ApiService.getSalesList(stationId: stationId);
+
+      setState(() {
+        _sales = sales;
+        _isLoadingSales = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingSales = false;
+        _errorMessage = 'Failed to load sales: ${e.toString()}';
+      });
+      log('Error loading sales: $e');
+    }
+  }
+
+  List<SaleDto> get filteredSales {
+    List<SaleDto> filtered = _sales;
+
+    // Filter by station if selected
+    if (_selectedStationId != null) {
+      filtered = filtered
+          .where((sale) => sale.stationID == _selectedStationId)
+          .toList();
+    }
+
+    // Filter by customer if selected
+    if (_selectedCustomerId != null) {
+      filtered = filtered
+          .where((sale) => sale.customerID == _selectedCustomerId)
+          .toList();
+    }
+
+    return filtered;
+  }
+
+  void _onStationChanged(int? stationId) {
+    setState(() {
+      _selectedStationId = stationId;
+      _selectedCustomerId = null; // Reset customer filter
+      _customers = []; // Clear customers list
+    });
+
+    // Load customers for the selected station
+    if (stationId != null) {
+      _loadCustomers(stationId);
+    }
   }
 
   void _showCustomerSelector() {
+    if (_selectedStationId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please select a station first'),
+          backgroundColor: AppTheme.primaryOrange,
+        ),
+      );
+      return;
+    }
+
+    if (_customers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No customers available for this station'),
+          backgroundColor: AppTheme.primaryOrange,
+        ),
+      );
+      return;
+    }
+
     final TextEditingController searchController = TextEditingController();
-    List<String> filteredCustomers = customers;
+    List<CustomerDto> filteredCustomers = _customers;
 
     showModalBottomSheet(
       context: context,
@@ -191,13 +177,13 @@ class _SaleListState extends State<SaleList> {
             void filterCustomers(String query) {
               setModalState(() {
                 if (query.isEmpty) {
-                  filteredCustomers = customers;
+                  filteredCustomers = _customers;
                 } else {
-                  filteredCustomers = customers
+                  filteredCustomers = _customers
                       .where(
-                        (customer) => customer.toLowerCase().contains(
-                          query.toLowerCase(),
-                        ),
+                        (customer) => customer.customerName
+                            .toLowerCase()
+                            .contains(query.toLowerCase()),
                       )
                       .toList();
                 }
@@ -205,10 +191,10 @@ class _SaleListState extends State<SaleList> {
             }
 
             return Container(
-              height: MediaQuery.of(context).size.height * 0.6,
+              height: MediaQuery.of(context).size.height * 0.7,
               decoration: BoxDecoration(
                 color: AppTheme.primaryBlue,
-                borderRadius: const BorderRadius.only(
+                borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(20),
                   topRight: Radius.circular(20),
                 ),
@@ -231,7 +217,7 @@ class _SaleListState extends State<SaleList> {
                         const SizedBox(width: 12),
                         const Expanded(
                           child: Text(
-                            'Select Customer',
+                            'Filter by Customer',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -281,6 +267,42 @@ class _SaleListState extends State<SaleList> {
                     ),
                   ),
 
+                  // "All Customers" option
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      color: _selectedCustomerId == null
+                          ? AppTheme.primaryOrange.withOpacity(0.2)
+                          : Colors.white.withOpacity(0.1),
+                      child: ListTile(
+                        leading: Icon(
+                          _selectedCustomerId == null
+                              ? Icons.check_circle
+                              : Icons.people_outline,
+                          color: _selectedCustomerId == null
+                              ? AppTheme.primaryOrange
+                              : Colors.white,
+                        ),
+                        title: Text(
+                          'All Customers',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: _selectedCustomerId == null
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
+                        onTap: () {
+                          setState(() {
+                            _selectedCustomerId = null;
+                          });
+                          Navigator.pop(context);
+                        },
+                      ),
+                    ),
+                  ),
+
                   // Customer List
                   Expanded(
                     child: filteredCustomers.isEmpty
@@ -309,7 +331,8 @@ class _SaleListState extends State<SaleList> {
                             itemCount: filteredCustomers.length,
                             itemBuilder: (context, index) {
                               final customer = filteredCustomers[index];
-                              final isSelected = selectedCustomer == customer;
+                              final isSelected =
+                                  _selectedCustomerId == customer.customerID;
 
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 8),
@@ -326,7 +349,7 @@ class _SaleListState extends State<SaleList> {
                                         : Colors.white,
                                   ),
                                   title: Text(
-                                    customer,
+                                    customer.customerName,
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontWeight: isSelected
@@ -334,9 +357,43 @@ class _SaleListState extends State<SaleList> {
                                           : FontWeight.normal,
                                     ),
                                   ),
+                                  subtitle: customer.customerPhone != null
+                                      ? Text(
+                                          customer.customerPhone!,
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(
+                                              0.6,
+                                            ),
+                                            fontSize: 12,
+                                          ),
+                                        )
+                                      : null,
+                                  trailing: customer.hasBalance
+                                      ? Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.primaryOrange
+                                                .withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'Bal: ${customer.balance.toStringAsFixed(0)}',
+                                            style: TextStyle(
+                                              color: AppTheme.primaryOrange,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        )
+                                      : null,
                                   onTap: () {
                                     setState(() {
-                                      selectedCustomer = customer;
+                                      _selectedCustomerId = customer.customerID;
                                     });
                                     Navigator.pop(context);
                                   },
@@ -354,8 +411,57 @@ class _SaleListState extends State<SaleList> {
     );
   }
 
+  String? _getSelectedCustomerName() {
+    if (_selectedCustomerId == null) return null;
+    final customer = _customers.firstWhere(
+      (c) => c.customerID == _selectedCustomerId,
+      orElse: () => CustomerDto(
+        customerID: 0,
+        customerName: 'Unknown',
+        balance: 0,
+        // cylinderBalance: 0,
+        // prepaidBalance: 0,
+      ),
+    );
+    return customer.customerName;
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingStations) {
+      return Center(
+        child: CircularProgressIndicator(color: AppTheme.primaryBlue),
+      );
+    }
+
+    if (_errorMessage != null && _stations.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, color: AppTheme.primaryOrange, size: 48),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                _errorMessage!,
+                style: const TextStyle(color: Colors.white70),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadInitialData,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryBlue,
+              ),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Column(
       children: [
         // Search Filters Section
@@ -370,7 +476,7 @@ class _SaleListState extends State<SaleList> {
           ),
           child: Column(
             children: [
-              // Station Dropdown
+              // Station Dropdown (always show for filtering)
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -383,17 +489,15 @@ class _SaleListState extends State<SaleList> {
                     ),
                   ],
                 ),
-                child: DropdownButtonFormField<String>(
-                  initialValue: selectedStation,
+                child: DropdownButtonFormField<int?>(
+                  value: _selectedStationId,
                   style: const TextStyle(
                     color: Colors.black87,
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),
-                  hint: Text('--Select Station--'),
+                  hint: const Text('All Stations'),
                   decoration: InputDecoration(
-                    // labelText: 'Select Station',
-                    // labelStyle: TextStyle(color: AppTheme.primaryBlue),
                     prefixIcon: Icon(
                       Icons.warehouse,
                       color: AppTheme.primaryOrange,
@@ -411,34 +515,40 @@ class _SaleListState extends State<SaleList> {
                     isDense: true,
                   ),
                   isExpanded: true,
-                  items: stations.map((station) {
-                    return DropdownMenuItem(
-                      value: station,
-                      child: Text(station),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      selectedStation = value;
-                      // TODO: Load customers for selected station from API
-                    });
-                  },
+                  items: [
+                    const DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('All Stations'),
+                    ),
+                    ..._stations.map((station) {
+                      return DropdownMenuItem<int?>(
+                        value: station.stationID,
+                        child: Text(station.stationName),
+                      );
+                    }).toList(),
+                  ],
+                  onChanged: _onStationChanged,
                 ),
               ),
 
               const SizedBox(height: 12),
 
-              // Customer Selector
+              // Customer Selector (show always, but disabled if no station selected)
               InkWell(
-                onTap: () => _showCustomerSelector(),
+                onTap: _selectedStationId == null || _isLoadingCustomers
+                    ? null
+                    : _showCustomerSelector,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 16,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: _selectedStationId == null
+                        ? Colors.grey.shade300
+                        : Colors.white,
                     borderRadius: BorderRadius.circular(12),
+
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.1),
@@ -449,21 +559,43 @@ class _SaleListState extends State<SaleList> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.person, color: AppTheme.primaryOrange),
+                      Icon(
+                        Icons.person,
+                        color: _selectedStationId == null
+                            ? Colors.grey.shade600
+                            : AppTheme.primaryOrange,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Text(
-                          selectedCustomer ?? 'Select Customer',
-                          style: TextStyle(
-                            color: selectedCustomer != null
-                                ? Colors.black87
-                                : Colors.grey[600],
-                            fontSize: 14,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        child: _isLoadingCustomers
+                            ? const Text(
+                                'Loading customers...',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 14,
+                                ),
+                              )
+                            : Text(
+                                _selectedStationId == null
+                                    ? 'Select station first'
+                                    : (_getSelectedCustomerName() ??
+                                          'All Customers'),
+                                style: TextStyle(
+                                  color: _selectedStationId == null
+                                      ? Colors.grey.shade600
+                                      : (_selectedCustomerId != null
+                                            ? Colors.black87
+                                            : Colors.grey[600]),
+                                  fontSize: 14,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                       ),
-                      Icon(Icons.arrow_drop_down, color: AppTheme.primaryBlue),
+                      if (!_isLoadingCustomers && _selectedStationId != null)
+                        Icon(
+                          Icons.arrow_drop_down,
+                          color: AppTheme.primaryBlue,
+                        ),
                     ],
                   ),
                 ),
@@ -473,45 +605,15 @@ class _SaleListState extends State<SaleList> {
         ),
 
         // Sales List
-        Expanded(
-          child: filteredSales.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.shopping_cart_outlined,
-                        size: 80,
-                        color: Colors.white.withOpacity(0.3),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No sales found',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
-                          fontSize: 18,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: filteredSales.length,
-                  itemBuilder: (context, index) {
-                    final sale = filteredSales[index];
-                    return SaleCard(sale: sale);
-                  },
-                ),
-        ),
+        Expanded(child: _buildSalesContent()),
 
-        // Add Sale Button
+        // Add Sale Button (always visible)
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             color: Colors.transparent,
-            borderRadius: const BorderRadius.only(
+            borderRadius: BorderRadius.only(
               topLeft: Radius.circular(20),
               topRight: Radius.circular(20),
             ),
@@ -541,6 +643,106 @@ class _SaleListState extends State<SaleList> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSalesContent() {
+    // Loading sales
+    if (_isLoadingSales) {
+      return Center(
+        child: CircularProgressIndicator(color: AppTheme.primaryBlue),
+      );
+    }
+
+    // Error state
+    if (_errorMessage != null && _sales.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, color: AppTheme.primaryOrange, size: 64),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                _errorMessage!,
+                style: const TextStyle(color: Colors.white70),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => _loadSales(_selectedStationId),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryBlue,
+              ),
+              child: const Text('Retry', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Empty state
+    if (filteredSales.isEmpty) {
+      String message = 'No sales found';
+      if (_selectedStationId != null && _selectedCustomerId != null) {
+        message = 'No sales found for this customer';
+      } else if (_selectedStationId != null) {
+        message = 'No sales found for this station';
+      }
+
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.shopping_cart_outlined,
+              size: 80,
+              color: Colors.white.withOpacity(0.3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 18,
+              ),
+            ),
+            if (_selectedStationId != null || _selectedCustomerId != null) ...[
+              const SizedBox(height: 16),
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _selectedStationId = null;
+                    _selectedCustomerId = null;
+                    _customers = [];
+                  });
+                },
+                icon: Icon(Icons.clear_all, color: AppTheme.primaryBlue),
+                label: Text(
+                  'Clear Filters',
+                  style: TextStyle(color: AppTheme.primaryBlue),
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    // Sales list
+    return RefreshIndicator(
+      onRefresh: () => _loadSales(null),
+      color: AppTheme.primaryBlue,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: filteredSales.length,
+        itemBuilder: (context, index) {
+          final sale = filteredSales[index];
+          return SaleCard(sale: sale);
+        },
+      ),
     );
   }
 }

@@ -1,471 +1,272 @@
+// lib/screens/sale_card.dart
+
 import 'package:flutter/material.dart';
 import 'package:lpg_station/theme/theme.dart';
+import 'package:lpg_station/models/sale_model.dart';
+import 'package:intl/intl.dart';
 
-class SaleCard extends StatefulWidget {
-  final Map<String, dynamic> sale;
+class SaleCard extends StatelessWidget {
+  final SaleDto sale;
 
   const SaleCard({super.key, required this.sale});
 
   @override
-  State<SaleCard> createState() => _SaleCardState();
-}
-
-class _SaleCardState extends State<SaleCard> {
-  bool _isExpanded = false;
-
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'draft':
-        return AppTheme.primaryBlue;
-      case 'approved':
-        return Colors.green;
-      case 'pending':
-        return Colors.amber;
-      case 'cancelled':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  String _formatDate(String dateStr) {
-    try {
-      final date = DateTime.parse(dateStr);
-      return '${date.day}/${date.month}/${date.year}';
-    } catch (e) {
-      return dateStr;
-    }
-  }
-
-  String _formatCurrency(num amount) {
-    return 'KSh ${amount.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}';
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final saleDetails = widget.sale['SaleDetails'] as List<dynamic>;
-    final status = widget.sale['Status'] as String;
-    final customerName = widget.sale['CustomerName'] as String;
-    final invoiceNo = widget.sale['InvoiceNo'] as String;
-    final saleDate = widget.sale['SaleDate'] as String;
-    final total = widget.sale['Total'] as num;
-    final balance = widget.sale['Balance'] as num;
+    final currencyFormat = NumberFormat.currency(
+      symbol: 'KSh ',
+      decimalDigits: 2,
+    );
+    final dateFormat = DateFormat('MMM dd, yyyy');
+    final timeFormat = DateFormat('hh:mm a');
 
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 4,
-      color: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.white, width: 2),
-          borderRadius: BorderRadius.circular(12),
-          color: Colors.white.withOpacity(0.05),
-        ),
-        child: Column(
-          children: [
-            // Header Section - Customer Name & Status
-            Container(
-              padding: const EdgeInsets.fromLTRB(12, 5, 12, 5),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.15),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(10),
-                  topRight: Radius.circular(10),
-                ),
-              ),
-              child: Row(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.primaryBlue.withOpacity(0.2)),
+      ),
+      child: InkWell(
+        onTap: () {
+          // Navigate to sale details
+          Navigator.pushNamed(context, '/sale-details', arguments: sale.saleID);
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header Row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
-                    child: Text(
-                      customerName,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(status),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      status,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Body Section - Invoice, Date, Total
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                children: [
-                  // Invoice Number
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.receipt,
-                        size: 16,
-                        color: Colors.white70,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          invoiceNo,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  // Date and Total
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.calendar_today,
-                            size: 16,
-                            color: Colors.white70,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            _formatDate(saleDate),
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        _formatCurrency(total),
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            // Toggle Items Button
-            InkWell(
-              onTap: () {
-                setState(() {
-                  _isExpanded = !_isExpanded;
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  border: const Border(top: BorderSide(color: Colors.white24)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.inventory_2,
-                          size: 18,
-                          color: AppTheme.primaryOrange,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Items (${saleDetails.length})',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Icon(
-                      _isExpanded ? Icons.expand_less : Icons.expand_more,
-                      color: Colors.white,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Expandable Items Table
-            if (_isExpanded)
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
-                ),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minWidth: MediaQuery.of(context).size.width - 48,
-                    ),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Table Header
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryBlue.withOpacity(0.2),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              SizedBox(
-                                width: 60,
-                                child: Text(
-                                  'Item',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
+                        Row(
+                          children: [
+                            Text(
+                              sale.invoiceNo,
+                              style: TextStyle(
+                                color: AppTheme.primaryBlue,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
                               ),
-                              SizedBox(
-                                width: 70,
-                                child: Text(
-                                  'Status',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
+                            ),
+                            if (sale.orderNo != null) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
                                 ),
-                              ),
-
-                              SizedBox(
-                                width: 40,
-                                child: Text(
-                                  'Qty',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(4),
                                 ),
-                              ),
-                              SizedBox(
-                                width: 80,
                                 child: Text(
-                                  'Price',
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(
+                                  '#${sale.orderNo}',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
                                     fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                              SizedBox(
-                                width: 95,
-                                child: Text(
-                                  'Amount',
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
                                   ),
                                 ),
                               ),
                             ],
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          dateFormat.format(sale.saleDate),
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 12,
                           ),
                         ),
-
-                        // Table Rows
-                        ...saleDetails.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          final detail = entry.value;
-                          final lubName = detail['LubName'] as String;
-                          final cylinderStatus = detail['CylStatus'] as String;
-                          final quantity = detail['Quantity'] as num;
-                          final price = detail['Price'] as num;
-                          final amount = detail['Amount'] as num;
-
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: index % 2 == 0
-                                  ? Colors.white.withOpacity(0.08)
-                                  : Colors.white.withOpacity(0.03),
-                              border: Border(
-                                bottom: index == saleDetails.length - 1
-                                    ? BorderSide.none
-                                    : const BorderSide(color: Colors.white12),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                SizedBox(
-                                  width: 60,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.primaryOrange.withOpacity(
-                                        0.8,
-                                      ),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      lubName,
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 70,
-                                  child: Text(
-                                    cylinderStatus.toString(),
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 40,
-                                  child: Text(
-                                    quantity.toString(),
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 80,
-                                  child: Text(
-                                    _formatCurrency(price),
-                                    textAlign: TextAlign.right,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.white,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 95,
-                                  child: Text(
-                                    _formatCurrency(amount),
-                                    textAlign: TextAlign.right,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.white,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
                       ],
                     ),
                   ),
-                ),
+                  _buildStatusBadge(sale),
+                ],
               ),
 
-            // Balance Section
-            if (balance > 0)
-              Container(
-                padding: const EdgeInsets.fromLTRB(12, 5, 12, 5),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.2),
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(10),
-                    bottomRight: Radius.circular(10),
+              const SizedBox(height: 12),
+
+              // Customer Info
+              Row(
+                children: [
+                  Icon(
+                    Icons.person_outline,
+                    size: 16,
+                    color: Colors.white.withOpacity(0.6),
                   ),
-                  border: _isExpanded
-                      ? null
-                      : const Border(top: BorderSide(color: Colors.white24)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Row(
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.account_balance_wallet,
-                          size: 16,
-                          color: Colors.redAccent,
-                        ),
-                        SizedBox(width: 6),
                         Text(
-                          'Balance',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
+                          sale.customerName,
+                          style: const TextStyle(
                             color: Colors.white,
+                            fontSize: 14,
+                          ),
+                        ),
+                        if (sale.customerPhone != null)
+                          Text(
+                            sale.customerPhone!,
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.5),
+                              fontSize: 12,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+
+              // Delivery Status (if applicable)
+              if (sale.isDispatched || sale.isDelivered) ...[
+                const SizedBox(height: 12),
+                _buildDeliveryStatus(sale, timeFormat),
+              ],
+
+              const SizedBox(height: 12),
+
+              // Amount Details
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Total Amount:',
+                          style: TextStyle(color: Colors.white70, fontSize: 13),
+                        ),
+                        Text(
+                          currencyFormat.format(sale.total),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
                     ),
-                    Text(
-                      _formatCurrency(balance),
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.deepPurple,
+                    if (!sale.isPaid) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Balance:',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                          ),
+                          Text(
+                            currencyFormat.format(sale.balance),
+                            style: TextStyle(
+                              color: AppTheme.primaryOrange,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
-          ],
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(SaleDto sale) {
+    Color badgeColor;
+    String badgeText;
+
+    if (sale.isPaid) {
+      badgeColor = Colors.green;
+      badgeText = 'PAID';
+    } else if (sale.isApproved) {
+      badgeColor = AppTheme.primaryOrange;
+      badgeText = 'PENDING';
+    } else {
+      badgeColor = Colors.red;
+      badgeText = 'UNAPPROVED';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: badgeColor.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: badgeColor),
+      ),
+      child: Text(
+        badgeText,
+        style: TextStyle(
+          color: badgeColor,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeliveryStatus(SaleDto sale, DateFormat timeFormat) {
+    IconData icon;
+    Color color;
+    String text;
+
+    if (sale.isDelivered && sale.dateDelivered != null) {
+      icon = Icons.check_circle;
+      color = Colors.green;
+      text = 'Delivered ${timeFormat.format(sale.dateDelivered!)}';
+    } else if (sale.isDispatched && sale.dateDispatched != null) {
+      icon = Icons.local_shipping;
+      color = AppTheme.primaryBlue;
+      text = 'Dispatched ${timeFormat.format(sale.dateDispatched!)}';
+    } else {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,7 +1,13 @@
+// lib/screens/add_sale.dart (updated version)
+
+import 'dart:developer';
 import 'package:flutter/material.dart';
+import 'package:lpg_station/models/customer_model.dart';
+import 'package:lpg_station/models/driver.dart';
 import 'package:lpg_station/models/sale_item.dart';
+import 'package:lpg_station/models/stock.dart';
+import 'package:lpg_station/services/api_service.dart';
 import 'package:lpg_station/theme/theme.dart';
-import 'package:lpg_station/widget/customer_selector.dart';
 import 'package:lpg_station/widget/item_sheet.dart';
 import 'package:lpg_station/widget/sale_item_card.dart';
 import 'package:lpg_station/widget/scanner_toggle.dart';
@@ -15,11 +21,23 @@ class AddSale extends StatefulWidget {
 }
 
 class _AddSaleState extends State<AddSale> {
+  // Loading states
+  bool _isLoadingStations = true;
+  bool _isLoadingCustomers = false;
+  bool _isLoadingDeliveryGuys = false;
+  bool _isSubmitting = false;
+  String? _errorMessage;
+
+  // API Data
+  List<StationDto> _stations = [];
+  List<CustomerDto> _customers = [];
+  List<Driver> _deliveryGuys = [];
+
   // Selection States
-  String? selectedStation;
-  String? selectedCustomer;
+  int? _selectedStationId;
+  int? _selectedCustomerId;
   String deliveryType = 'Own Picking';
-  String? selectedDeliveryGuy;
+  String? _selectedDeliveryGuyId;
 
   // Sale Items
   List<SaleItem> saleItems = [];
@@ -33,22 +51,7 @@ class _AddSaleState extends State<AddSale> {
   String _scanBuffer = '';
   bool _isScanning = false;
 
-  // Sample Data - Replace with API calls
-  final List<String> stations = ['Station 1', 'Station 2', 'Station 3'];
-
-  final List<String> customers = [
-    'JAMWAS BEAUTY SHOP- CBD',
-    'CAFE CASSIA',
-    'HABESHA KILIMANI',
-  ];
-
-  // Delivery guys per station
-  final Map<String, List<String>> deliveryGuysByStation = {
-    'Station 1': ['John Doe', 'Jane Smith', 'Mike Johnson'],
-    'Station 2': ['Alice Brown', 'Bob Wilson', 'Charlie Davis'],
-    'Station 3': ['David Lee', 'Emma White', 'Frank Miller'],
-  };
-
+  // Cylinder types - Replace with API call if needed
   final List<Map<String, dynamic>> cylinderTypes = [
     {
       'id': 1,
@@ -83,6 +86,7 @@ class _AddSaleState extends State<AddSale> {
   @override
   void initState() {
     super.initState();
+    _loadStations();
     _calculateTotals();
   }
 
@@ -93,35 +97,158 @@ class _AddSaleState extends State<AddSale> {
     super.dispose();
   }
 
+  Future<void> _loadStations() async {
+    setState(() {
+      _isLoadingStations = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final stations = await ApiService.getUserStations();
+
+      setState(() {
+        _stations = stations;
+        _isLoadingStations = false;
+
+        // If only one station, auto-select it
+        if (_stations.length == 1) {
+          _selectedStationId = _stations.first.stationID;
+          _loadCustomers(_selectedStationId!);
+          _loadDeliveryGuys(_selectedStationId!);
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingStations = false;
+        _errorMessage = 'Failed to load stations: ${e.toString()}';
+      });
+      log('Error loading stations: $e');
+    }
+  }
+
+  Future<void> _loadCustomers(int stationId) async {
+    setState(() {
+      _isLoadingCustomers = true;
+      _selectedCustomerId = null;
+    });
+
+    try {
+      final customers = await ApiService.getCustomersByStation(stationId);
+
+      setState(() {
+        _customers = customers;
+        _isLoadingCustomers = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingCustomers = false;
+      });
+      log('Error loading customers: $e');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load customers: ${e.toString()}'),
+          backgroundColor: AppTheme.primaryOrange,
+        ),
+      );
+    }
+  }
+
+  Future<void> _loadDeliveryGuys(int stationId) async {
+    setState(() {
+      _isLoadingDeliveryGuys = true;
+      _selectedDeliveryGuyId = null;
+    });
+
+    try {
+      final deliveryGuys = await ApiService.getStationDeliveryGuys(stationId);
+
+      setState(() {
+        _deliveryGuys = deliveryGuys;
+        _isLoadingDeliveryGuys = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingDeliveryGuys = false;
+      });
+      log('Error loading delivery guys: $e');
+
+      if (deliveryType == 'Delivery') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load delivery guys: ${e.toString()}'),
+            backgroundColor: AppTheme.primaryOrange,
+          ),
+        );
+      }
+    }
+  }
+
   void _calculateTotals() {
     totalAmount = saleItems.fold(0.0, (sum, item) => sum + item.totalAmount);
     setState(() {});
   }
 
-  List<String> get availableDeliveryGuys {
-    if (selectedStation == null) return [];
-    return deliveryGuysByStation[selectedStation] ?? [];
+  String? get selectedStationName {
+    if (_selectedStationId == null) return null;
+    final station = _stations.firstWhere(
+      (s) => s.stationID == _selectedStationId,
+      orElse: () => StationDto(stationID: 0, stationName: 'Unknown'),
+    );
+    return station.stationName;
   }
 
-  void _onStationChanged(String? value) {
-    setState(() {
-      selectedStation = value;
-      if (deliveryType == 'Delivery') {
-        selectedDeliveryGuy = null;
-      }
-    });
+  String? get selectedCustomerName {
+    if (_selectedCustomerId == null) return null;
+    final customer = _customers.firstWhere(
+      (c) => c.customerID == _selectedCustomerId,
+      orElse: () => CustomerDto(
+        customerID: 0,
+        customerName: 'Unknown',
+        balance: 0,
+        // cylinderBalance: 0,
+        // prepaidBalance: 0,
+      ),
+    );
+    return customer.customerName;
+  }
+
+  String? get selectedDeliveryGuyName {
+    if (_selectedDeliveryGuyId == null) return null;
+    final deliveryGuy = _deliveryGuys.firstWhere(
+      (d) => d.id == _selectedDeliveryGuyId,
+      orElse: () => Driver(id: '', fullName: 'Unknown'),
+    );
+    return deliveryGuy.fullName;
+  }
+
+  void _onStationChanged(int? value) {
+    if (value != null) {
+      setState(() {
+        _selectedStationId = value;
+        _selectedDeliveryGuyId = null;
+      });
+      _loadCustomers(value);
+      _loadDeliveryGuys(value);
+    }
   }
 
   void _onDeliveryTypeChanged(String? value) {
     setState(() {
       deliveryType = value ?? 'Own Picking';
       if (deliveryType == 'Own Picking') {
-        selectedDeliveryGuy = null;
+        _selectedDeliveryGuyId = null;
+      } else if (deliveryType == 'Delivery' &&
+          _selectedStationId != null &&
+          _deliveryGuys.isEmpty &&
+          !_isLoadingDeliveryGuys) {
+        // Load delivery guys if switching to delivery and not loaded yet
+        _loadDeliveryGuys(_selectedStationId!);
       }
     });
   }
 
-  // Scanner Methods
+  // ... Keep all your existing scanner methods unchanged ...
   void _onScannerTextChanged(String value) {
     _scanBuffer = value;
     Future.delayed(const Duration(milliseconds: 100), () {
@@ -245,7 +372,7 @@ class _AddSaleState extends State<AddSale> {
     }
   }
 
-  // Item Management
+  // ... Keep all your existing item management methods unchanged ...
   void _addSaleItem() {
     showModalBottomSheet(
       context: context,
@@ -315,38 +442,251 @@ class _AddSaleState extends State<AddSale> {
   }
 
   void _showCustomerSelector() {
+    if (_selectedStationId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please select a station first'),
+          backgroundColor: AppTheme.primaryOrange,
+        ),
+      );
+      return;
+    }
+
+    if (_customers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No customers available for this station'),
+          backgroundColor: AppTheme.primaryOrange,
+        ),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => CustomerSelectorSheet(
-        customers: customers,
-        selectedCustomer: selectedCustomer,
-        onCustomerSelected: (customer) {
-          setState(() {
-            selectedCustomer = customer;
+      builder: (context) => _buildCustomerSelectorSheet(),
+    );
+  }
+
+  Widget _buildCustomerSelectorSheet() {
+    final TextEditingController searchController = TextEditingController();
+    List<CustomerDto> filteredCustomers = _customers;
+
+    return StatefulBuilder(
+      builder: (context, setModalState) {
+        void filterCustomers(String query) {
+          setModalState(() {
+            if (query.isEmpty) {
+              filteredCustomers = _customers;
+            } else {
+              filteredCustomers = _customers
+                  .where(
+                    (customer) => customer.customerName.toLowerCase().contains(
+                      query.toLowerCase(),
+                    ),
+                  )
+                  .toList();
+            }
           });
-        },
-      ),
+        }
+
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.7,
+          decoration: BoxDecoration(
+            color: AppTheme.primaryBlue,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.person, color: AppTheme.primaryOrange),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Select Customer',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Search Box
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: TextField(
+                  controller: searchController,
+                  autofocus: true,
+                  style: const TextStyle(color: Colors.black87),
+                  decoration: InputDecoration(
+                    hintText: 'Search customers...',
+                    filled: true,
+                    fillColor: Colors.white,
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              searchController.clear();
+                              filterCustomers('');
+                            },
+                          )
+                        : null,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                  ),
+                  onChanged: filterCustomers,
+                ),
+              ),
+
+              // Customer List
+              Expanded(
+                child: filteredCustomers.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search_off,
+                              size: 64,
+                              color: Colors.white.withOpacity(0.3),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No customers found',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: filteredCustomers.length,
+                        itemBuilder: (context, index) {
+                          final customer = filteredCustomers[index];
+                          final isSelected =
+                              _selectedCustomerId == customer.customerID;
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            color: isSelected
+                                ? AppTheme.primaryOrange.withOpacity(0.2)
+                                : Colors.white.withOpacity(0.1),
+                            child: ListTile(
+                              leading: Icon(
+                                isSelected
+                                    ? Icons.check_circle
+                                    : Icons.person_outline,
+                                color: isSelected
+                                    ? AppTheme.primaryOrange
+                                    : Colors.white,
+                              ),
+                              title: Text(
+                                customer.customerName,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                              subtitle: customer.customerPhone != null
+                                  ? Text(
+                                      customer.customerPhone!,
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.6),
+                                        fontSize: 12,
+                                      ),
+                                    )
+                                  : null,
+                              trailing: customer.hasBalance
+                                  ? Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryOrange
+                                            .withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        'Bal: ${customer.balance.toStringAsFixed(0)}',
+                                        style: TextStyle(
+                                          color: AppTheme.primaryOrange,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    )
+                                  : null,
+                              onTap: () {
+                                setState(() {
+                                  _selectedCustomerId = customer.customerID;
+                                });
+                                Navigator.pop(context);
+                              },
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
   void _saveSale() async {
-    if (selectedStation == null) {
+    if (_selectedStationId == null) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Please select a station')));
       return;
     }
 
-    if (selectedCustomer == null) {
+    if (_selectedCustomerId == null) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Please select a customer')));
       return;
     }
 
-    if (deliveryType == 'Delivery' && selectedDeliveryGuy == null) {
+    if (deliveryType == 'Delivery' && _selectedDeliveryGuyId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select a delivery guy')),
       );
@@ -373,20 +713,162 @@ class _AddSaleState extends State<AddSale> {
       return;
     }
 
-    // TODO: Implement API call
+    setState(() {
+      _isSubmitting = true;
+    });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Sale saved successfully!'),
-        backgroundColor: Colors.green,
-      ),
-    );
+    try {
+      // TODO: Implement API call to save sale
+      // final saleData = {
+      //   'stationId': _selectedStationId,
+      //   'customerId': _selectedCustomerId,
+      //   'deliveryType': deliveryType,
+      //   'deliveryGuyId': _selectedDeliveryGuyId,
+      //   'items': saleItems.map((item) => item.toJson()).toList(),
+      //   'totalAmount': totalAmount,
+      // };
+      // await ApiService.createSale(saleData);
 
-    widget.onBack();
+      // Simulate API call
+      await Future.delayed(const Duration(seconds: 2));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sale saved successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        widget.onBack();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save sale: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      log('Error saving sale: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Loading state
+    if (_isLoadingStations) {
+      return Stack(
+        children: [
+          Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.arrow_circle_left,
+                        color: Colors.white,
+                      ),
+                      onPressed: widget.onBack,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Add New Sale',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: CircularProgressIndicator(color: AppTheme.primaryBlue),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    // Error state
+    if (_errorMessage != null && _stations.isEmpty) {
+      return Stack(
+        children: [
+          Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.arrow_circle_left,
+                        color: Colors.white,
+                      ),
+                      onPressed: widget.onBack,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Add New Sale',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        color: AppTheme.primaryOrange,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 16),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Text(
+                          _errorMessage!,
+                          style: const TextStyle(color: Colors.white70),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _loadStations,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryBlue,
+                        ),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
     return Stack(
       children: [
         Column(
@@ -394,7 +876,6 @@ class _AddSaleState extends State<AddSale> {
             // Header
             Container(
               padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
-              //  decoration: BoxDecoration(color: Colors.white.withOpacity(0.1)),
               child: Row(
                 children: [
                   IconButton(
@@ -424,7 +905,7 @@ class _AddSaleState extends State<AddSale> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Station Dropdown
+                    // Station Dropdown or Display
                     const Text(
                       'Station',
                       style: TextStyle(
@@ -434,59 +915,122 @@ class _AddSaleState extends State<AddSale> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: DropdownButtonFormField<String>(
-                        initialValue: selectedStation,
-                        decoration: InputDecoration(
-                          prefixIcon: Icon(
-                            Icons.warehouse,
-                            color: AppTheme.primaryOrange,
-                            size: 18,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none,
-                          ),
-                          filled: true,
-                          fillColor: Colors.white,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          isDense: true,
-                        ),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Colors.black87,
-                        ),
-                        hint: const Text(
-                          'Select Station',
-                          style: TextStyle(fontSize: 13),
-                        ),
-                        isExpanded: true,
-                        items: stations.map((station) {
-                          return DropdownMenuItem(
-                            value: station,
-                            child: Text(
-                              station,
-                              style: const TextStyle(fontSize: 13),
+
+                    // If multiple stations, show dropdown
+                    if (_stations.length > 1)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
                             ),
-                          );
-                        }).toList(),
-                        onChanged: _onStationChanged,
+                          ],
+                        ),
+                        child: DropdownButtonFormField<int>(
+                          value: _selectedStationId,
+                          decoration: InputDecoration(
+                            prefixIcon: Icon(
+                              Icons.warehouse,
+                              color: AppTheme.primaryOrange,
+                              size: 18,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            isDense: true,
+                          ),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.black87,
+                          ),
+                          hint: const Text(
+                            'Select Station',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                          isExpanded: true,
+                          items: _stations.map((station) {
+                            return DropdownMenuItem<int>(
+                              value: station.stationID,
+                              child: Text(
+                                station.stationName,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: _onStationChanged,
+                        ),
+                      )
+                    // If single station, show display
+                    else if (_stations.length == 1)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryBlue.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: AppTheme.primaryBlue.withOpacity(0.3),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.warehouse,
+                              color: AppTheme.primaryBlue,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                selectedStationName ?? '',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'AUTO',
+                                style: TextStyle(
+                                  color: Colors.green,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
 
                     const SizedBox(height: 10),
 
@@ -501,14 +1045,18 @@ class _AddSaleState extends State<AddSale> {
                     ),
                     const SizedBox(height: 4),
                     InkWell(
-                      onTap: _showCustomerSelector,
+                      onTap: _selectedStationId == null || _isLoadingCustomers
+                          ? null
+                          : _showCustomerSelector,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
                           vertical: 10,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: _selectedStationId == null
+                              ? Colors.grey.shade300
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(8),
                           boxShadow: [
                             BoxShadow(
@@ -522,27 +1070,44 @@ class _AddSaleState extends State<AddSale> {
                           children: [
                             Icon(
                               Icons.person,
-                              color: AppTheme.primaryOrange,
+                              color: _selectedStationId == null
+                                  ? Colors.grey.shade600
+                                  : AppTheme.primaryOrange,
                               size: 18,
                             ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: Text(
-                                selectedCustomer ?? 'Select Customer',
-                                style: TextStyle(
-                                  color: selectedCustomer != null
-                                      ? Colors.black87
-                                      : Colors.grey[600],
-                                  fontSize: 13,
-                                ),
-                                overflow: TextOverflow.ellipsis,
+                              child: _isLoadingCustomers
+                                  ? const Text(
+                                      'Loading customers...',
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 13,
+                                      ),
+                                    )
+                                  : Text(
+                                      _selectedStationId == null
+                                          ? 'Select station first'
+                                          : (selectedCustomerName ??
+                                                'Select Customer'),
+                                      style: TextStyle(
+                                        color: _selectedStationId == null
+                                            ? Colors.grey.shade600
+                                            : (_selectedCustomerId != null
+                                                  ? Colors.black87
+                                                  : Colors.grey[600]),
+                                        fontSize: 13,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                            ),
+                            if (!_isLoadingCustomers &&
+                                _selectedStationId != null)
+                              Icon(
+                                Icons.arrow_drop_down,
+                                color: AppTheme.primaryBlue,
+                                size: 22,
                               ),
-                            ),
-                            Icon(
-                              Icons.arrow_drop_down,
-                              color: AppTheme.primaryBlue,
-                              size: 22,
-                            ),
                           ],
                         ),
                       ),
@@ -573,7 +1138,7 @@ class _AddSaleState extends State<AddSale> {
                         ],
                       ),
                       child: DropdownButtonFormField<String>(
-                        initialValue: deliveryType,
+                        value: deliveryType,
                         decoration: InputDecoration(
                           prefixIcon: Icon(
                             Icons.local_shipping,
@@ -610,7 +1175,7 @@ class _AddSaleState extends State<AddSale> {
                       ),
                     ),
 
-                    // Conditional Delivery Guy Dropdown
+                    // Delivery Guy Dropdown
                     if (deliveryType == 'Delivery') ...[
                       const SizedBox(height: 10),
                       const Text(
@@ -624,7 +1189,11 @@ class _AddSaleState extends State<AddSale> {
                       const SizedBox(height: 4),
                       Container(
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color:
+                              _selectedStationId == null ||
+                                  _isLoadingDeliveryGuys
+                              ? Colors.grey.shade300
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(8),
                           boxShadow: [
                             BoxShadow(
@@ -634,54 +1203,93 @@ class _AddSaleState extends State<AddSale> {
                             ),
                           ],
                         ),
-                        child: DropdownButtonFormField<String>(
-                          initialValue: selectedDeliveryGuy,
-                          decoration: InputDecoration(
-                            prefixIcon: Icon(
-                              Icons.person_pin,
-                              color: AppTheme.primaryOrange,
-                              size: 18,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide.none,
-                            ),
-                            filled: true,
-                            fillColor: Colors.white,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            isDense: true,
-                          ),
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Colors.black87,
-                          ),
-                          hint: Text(
-                            availableDeliveryGuys.isEmpty
-                                ? 'Select a station first'
-                                : 'Select Delivery Guy',
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                          isExpanded: true,
-                          items: availableDeliveryGuys.map((guy) {
-                            return DropdownMenuItem(
-                              value: guy,
-                              child: Text(
-                                guy,
-                                style: const TextStyle(fontSize: 13),
+                        child: _isLoadingDeliveryGuys
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 10,
+                                ),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: AppTheme.primaryBlue,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Loading delivery guys...',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : DropdownButtonFormField<String>(
+                                value: _selectedDeliveryGuyId,
+                                decoration: InputDecoration(
+                                  prefixIcon: Icon(
+                                    Icons.person_pin,
+                                    color: _selectedStationId == null
+                                        ? Colors.grey.shade600
+                                        : AppTheme.primaryOrange,
+                                    size: 18,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  filled: true,
+                                  fillColor: _selectedStationId == null
+                                      ? Colors.grey.shade300
+                                      : Colors.white,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  isDense: true,
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.black87,
+                                ),
+                                hint: Text(
+                                  _selectedStationId == null
+                                      ? 'Select a station first'
+                                      : (_deliveryGuys.isEmpty
+                                            ? 'No delivery guys available'
+                                            : 'Select Delivery Guy'),
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                                isExpanded: true,
+                                items: _deliveryGuys.isEmpty
+                                    ? null
+                                    : _deliveryGuys.map((guy) {
+                                        return DropdownMenuItem<String>(
+                                          value: guy.id,
+                                          child: Text(
+                                            guy.fullName,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        );
+                                      }).toList(),
+                                onChanged:
+                                    _deliveryGuys.isEmpty ||
+                                        _selectedStationId == null
+                                    ? null
+                                    : (value) {
+                                        setState(() {
+                                          _selectedDeliveryGuyId = value;
+                                        });
+                                      },
                               ),
-                            );
-                          }).toList(),
-                          onChanged: availableDeliveryGuys.isEmpty
-                              ? null
-                              : (value) {
-                                  setState(() {
-                                    selectedDeliveryGuy = value;
-                                  });
-                                },
-                        ),
                       ),
                     ],
 
@@ -875,9 +1483,9 @@ class _AddSaleState extends State<AddSale> {
             // Submit Button
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: Colors.transparent,
-                borderRadius: const BorderRadius.only(
+                borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(20),
                   topRight: Radius.circular(20),
                 ),
@@ -885,7 +1493,7 @@ class _AddSaleState extends State<AddSale> {
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _saveSale,
+                  onPressed: _isSubmitting ? null : _saveSale,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryOrange,
                     padding: const EdgeInsets.fromLTRB(16, 5, 16, 5),
@@ -893,14 +1501,23 @@ class _AddSaleState extends State<AddSale> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text(
-                    'Submit Sale',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          'Submit Sale',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
                 ),
               ),
             ),
