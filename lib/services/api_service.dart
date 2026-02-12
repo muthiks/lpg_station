@@ -1,12 +1,8 @@
 import 'dart:convert';
 import 'dart:developer';
-
 import 'package:http/http.dart' as http;
-import 'package:lpg_station/models/customer_model.dart';
-import 'package:lpg_station/models/driver.dart';
 import 'package:lpg_station/models/receive_model.dart';
 import 'package:lpg_station/models/sale_model.dart';
-import 'package:lpg_station/models/stock.dart';
 import 'package:lpg_station/services/auth_service.dart';
 
 class ApiService {
@@ -61,7 +57,9 @@ class ApiService {
   }
 
   ///GET Trucks/////
-  static Future<List<Driver>> getStationDeliveryGuys(int stationId) async {
+  static Future<List<DeliveryGuyDto>> getStationDeliveryGuys(
+    int stationId,
+  ) async {
     final response = await http.get(
       Uri.parse('$_baseUrl/GetStationDeliveryGuys?stationId=$stationId'),
       headers: _headers,
@@ -70,12 +68,12 @@ class ApiService {
     // log('STATUS: ${response.statusCode}');
     // log('BODY: ${response.body}');
 
-    if (response.statusCode != 200) {
-      throw Exception('Failed to load drivers');
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      return data.map((j) => DeliveryGuyDto.fromJson(j)).toList();
+    } else {
+      throw Exception('Failed to load delivery guys: ${response.body}');
     }
-
-    final List data = jsonDecode(response.body);
-    return data.map((e) => Driver.fromJson(e)).toList();
   }
 
   // Get station stocks
@@ -108,19 +106,92 @@ class ApiService {
   }
 
   // Get sales list (optionally filtered by station)
-  static Future<List<SaleDto>> getSalesList({int? stationId}) async {
-    String url = '$_baseUrl/GetSalesList';
+  static Future<List<SaleDto>> getStationLpgSales({int? stationId}) async {
+    String url = '$_baseUrl/GetStationLpgSales';
     if (stationId != null) {
       url += '?stationId=$stationId';
     }
 
     final response = await http.get(Uri.parse(url), headers: _headers);
+    log('STATUS: ${response.statusCode}');
+    log('BODY: ${response.body}');
 
     if (response.statusCode == 200) {
       final List<dynamic> data = json.decode(response.body);
       return data.map((json) => SaleDto.fromJson(json)).toList();
     } else {
       throw Exception('Failed to load sales');
+    }
+  }
+
+  // Update sale status (Draft → Confirmed → Dispatched → Delivered)
+  static Future<void> updateSaleStatus(int saleId, String newStatus) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/UpdateSaleStatus?saleId=$saleId&status=$newStatus'),
+      headers: _headers,
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to update status: ${response.body}');
+    }
+  }
+
+  // Delete a sale
+  static Future<void> deleteSale(int saleId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/DeleteSale?saleId=$saleId'),
+        headers: _headers,
+      );
+      if (response.statusCode != 200) {
+        throw Exception('Failed to delete sale: ${response.body}');
+      }
+    } catch (e) {
+      log('Error deleting sale: $e');
+      rethrow;
+    }
+  }
+
+  // Create a new sale
+  static Future<void> createSale(Map<String, dynamic> saleData) async {
+    try {
+      final url = Uri.parse('$_baseUrl/ValidateRefillCylinder');
+
+      final response = await http.post(
+        url,
+        headers: _headers,
+        body: jsonEncode(saleData), // Just send the string directly
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception('Failed to create sale: ${response.body}');
+      }
+    } catch (e) {
+      log('Error creating sale: $e');
+      rethrow;
+    }
+  }
+
+  // Update an existing sale
+  static Future<void> updateSale(
+    int saleId,
+    Map<String, dynamic> saleData,
+  ) async {
+    try {
+      final url = Uri.parse('$_baseUrl/ValidateRefillCylinder');
+
+      final response = await http.post(
+        url,
+        headers: _headers,
+        body: jsonEncode(saleData), // Just send the string directly
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to update sale: ${response.body}');
+      }
+    } catch (e) {
+      log('Error updating sale: $e');
+      rethrow;
     }
   }
 }

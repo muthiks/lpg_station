@@ -29,7 +29,11 @@ class SaleCard extends StatelessWidget {
       child: InkWell(
         onTap: () {
           // Navigate to sale details
-          Navigator.pushNamed(context, '/sale-details', arguments: sale.saleID);
+          Navigator.pushNamed(
+            context,
+            '/sale-details',
+            arguments: sale.lpgSaleID,
+          );
         },
         borderRadius: BorderRadius.circular(12),
         child: Padding(
@@ -129,11 +133,11 @@ class SaleCard extends StatelessWidget {
               ),
 
               // Delivery Status (if applicable)
-              if (sale.isDispatched || sale.isDelivered) ...[
+              if (sale.status == 'Dispatched' ||
+                  sale.status == 'Delivered') ...[
                 const SizedBox(height: 12),
                 _buildDeliveryStatus(sale, timeFormat),
               ],
-
               const SizedBox(height: 12),
 
               // Amount Details
@@ -237,7 +241,7 @@ class SaleCard extends StatelessWidget {
       icon = Icons.check_circle;
       color = Colors.green;
       text = 'Delivered ${timeFormat.format(sale.dateDelivered!)}';
-    } else if (sale.isDispatched && sale.dateDispatched != null) {
+    } else if (sale.status == 'Dispatched' && sale.dateDispatched != null) {
       icon = Icons.local_shipping;
       color = AppTheme.primaryBlue;
       text = 'Dispatched ${timeFormat.format(sale.dateDispatched!)}';

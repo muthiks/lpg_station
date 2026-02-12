@@ -783,7 +783,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                               }
                             });
                           },
-                          activeColor: AppTheme.primaryOrange,
+                          activeThumbColor: AppTheme.primaryOrange,
                         ),
                       ],
                     ),
