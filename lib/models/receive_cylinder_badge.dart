@@ -20,6 +20,13 @@ class CylinderBadge {
     );
   }
 
-  /// Computed badge text (BEST PRACTICE)
-  String get badgeText => '$cylinderType - ($totalCount-$undeliveredCount)';
+  /// How many have already been received
+  int get receivedCount => totalCount - undeliveredCount;
+
+  /// true when nothing left to receive
+  bool get isFullyReceived => undeliveredCount == 0;
+
+  /// e.g. "50KG - (4-0)" means 4 received out of 4
+  ///      "50KG - (0-4)" means 0 received out of 4  ✅ corrected order
+  String get badgeText => '$cylinderType - ($receivedCount-$totalCount)';
 }

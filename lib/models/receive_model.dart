@@ -6,6 +6,7 @@ class Receive {
   final String invoiceNo;
   final String truckNo;
   final String customer;
+  final String user;
   final List<CylinderBadge> cylinders;
 
   Receive({
@@ -14,6 +15,7 @@ class Receive {
     required this.invoiceNo,
     required this.truckNo,
     required this.customer,
+    required this.user,
     required this.cylinders,
   });
 
@@ -24,6 +26,7 @@ class Receive {
       truckNo: json['TruckNo'],
       customer: json['DealerName'],
       invoiceNo: json['InvoiceNo'],
+      user: json['User'],
       cylinders: (json['Cylinders'] as List)
           .map((e) => CylinderBadge.fromJson(e))
           .toList(),
