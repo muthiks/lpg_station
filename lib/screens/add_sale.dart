@@ -400,12 +400,19 @@ class _AddSaleState extends State<AddSale> {
       _showSnack('No stock items found. Try refreshing.', isError: true);
       return;
     }
+    final cylinders = _allStockItems
+        .where((i) => i['isAccessory'] == false)
+        .toList();
+    final accessories = _allStockItems
+        .where((i) => i['isAccessory'] == true)
+        .toList();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => AddItemSheet(
-        cylinderTypes: _allStockItems,
+        cylinderTypes: cylinders,
+        accessories: accessories,
         onItemAdded: (item) => setState(() {
           saleItems.add(item);
           _calculateTotals();
@@ -415,12 +422,19 @@ class _AddSaleState extends State<AddSale> {
   }
 
   void _editSaleItem(int index) {
+    final cylinders = _allStockItems
+        .where((i) => i['isAccessory'] == false)
+        .toList();
+    final accessories = _allStockItems
+        .where((i) => i['isAccessory'] == true)
+        .toList();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => AddItemSheet(
-        cylinderTypes: _allStockItems,
+        cylinderTypes: cylinders,
+        accessories: accessories,
         existingItem: saleItems[index],
         onItemAdded: (updated) => setState(() {
           saleItems[index] = updated;
@@ -614,37 +628,53 @@ class _AddSaleState extends State<AddSale> {
 
     setState(() => _isSubmitting = true);
     try {
-      // ── Build payload matching the required JSON format ───────────
-      final payload = {
-        'LpgSaleID': widget.isEditMode ? widget.editSale!.lpgSaleID : 0,
-        'SaleDate': DateTime.now().toUtc().toIso8601String(),
+      final now = DateTime.now();
+      final deliveryGuy =
+          _deliveryType == 'Delivery' && _selectedDeliveryGuy != null
+          ? _selectedDeliveryGuy!.id
+          : '';
+
+      // ── Payload — wrapped in 'data' as the model binder expects ────
+      final saleData = {
+        // LpgSaleID only needed for update — server uses it to find the record
+        if (widget.isEditMode) 'LpgSaleID': widget.editSale!.lpgSaleID,
+        'SaleDate': now.toIso8601String(),
         'CustomerID': _selectedCustomer!.customerID,
         'CustomerName': _selectedCustomer!.customerName,
-        'stationID': _selectedStation!.stationID,
+        'StationID': _selectedStation!.stationID,
+        'DeliveryGuy': _selectedDeliveryGuy!.id,
+        'AddedBy': 'user',
+        'DateAdded': now.toIso8601String(),
+
+        // Totals calculated in Flutter — server stores them as-is
         'Total': totalAmount,
-        'DeliveryGuy':
-            _deliveryType == 'Delivery' && _selectedDeliveryGuy != null
-            ? _selectedDeliveryGuy!.fullName
-            : '',
+        'Balance': totalAmount,
+
+        // Detail lines — cylinders only (accessories not in C# model yet)
         'SaleDetails': saleItems
+            .where((item) => item.cylinderTypeName != 'Accessory Only')
             .map(
               (item) => {
-                'SaleDetailID': 0,
                 'CylinderID': item.cylinderTypeId,
                 'Quantity': item.quantity,
-                'Status': item.cylinderStatus, // Refill | Complete | Lease
-                'PriceType': item.priceType, // Retail | Custom | KG
+                'Status': item.cylinderStatus,
+                'PriceType': item.priceType,
                 'Price': item.price,
+                'Amount': item.amount,
                 'CylinderPrice': item.cylinderPrice,
                 'CylinderAmount': item.cylinderAmount,
+                // Capacity must be int — API model uses int not double
                 'Capacity': _getCapacity(
                   item.cylinderTypeId,
                   knownCapacity: item.capacity,
-                ),
+                ).toInt(),
               },
             )
             .toList(),
       };
+
+      // [FromBody] reads the body directly — no wrapper key needed
+      final payload = saleData;
 
       log('Submitting sale payload: $payload');
 

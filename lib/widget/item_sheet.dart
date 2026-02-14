@@ -3,13 +3,17 @@ import 'package:lpg_station/models/sale_item.dart';
 import 'package:lpg_station/theme/theme.dart';
 
 class AddItemSheet extends StatefulWidget {
+  // Only cylinder items (isAccessory == false) from the API stock
   final List<Map<String, dynamic>> cylinderTypes;
+  // Only accessory items (isAccessory == true) from the API stock
+  final List<Map<String, dynamic>> accessories;
   final SaleItem? existingItem;
   final Function(SaleItem) onItemAdded;
 
   const AddItemSheet({
     super.key,
     required this.cylinderTypes,
+    required this.accessories,
     required this.onItemAdded,
     this.existingItem,
   });
@@ -24,36 +28,28 @@ class _AddItemSheetState extends State<AddItemSheet> {
   double price = 0.0;
   double cylinderPrice = 0.0;
   double cylinderAmount = 0.0;
-  String cylinderStatus = 'Refill';
-  String priceType = 'Retail';
+
+  // CHANGE 5: Lease is default, Refill moves to last
+  String cylinderStatus = 'Lease';
+  // CHANGE 4: Custom is default price type
+  String priceType = 'Custom';
 
   // Accessories
   bool includeAccessories = false;
   String? selectedAccessoryId;
   int accessoryQuantity = 1;
   double accessoryPrice = 0.0;
-  String accessoryPriceType = 'Retail';
+  String accessoryPriceType = 'Custom';
 
   final TextEditingController _priceController = TextEditingController();
   final TextEditingController _accessoryPriceController =
       TextEditingController();
-
-  // Sample accessories data - Replace with API
-  final List<Map<String, dynamic>> accessories = [
-    {'id': 'acc_1', 'name': 'Gas Hose', 'price': 500.0},
-    {'id': 'acc_2', 'name': 'Regulator', 'price': 1200.0},
-    {'id': 'acc_3', 'name': 'Gas Lighter', 'price': 150.0},
-    {'id': 'acc_4', 'name': 'Pipe Clips', 'price': 50.0},
-    {'id': 'acc_5', 'name': 'Burner Head', 'price': 800.0},
-  ];
 
   @override
   void initState() {
     super.initState();
     if (widget.existingItem != null) {
       final item = widget.existingItem!;
-
-      // Only load cylinder data if it's not an accessory-only item
       if (item.cylinderTypeName != 'Accessory Only') {
         selectedCylinderTypeId = item.cylinderTypeId;
         quantity = item.quantity;
@@ -63,14 +59,12 @@ class _AddItemSheetState extends State<AddItemSheet> {
         cylinderStatus = item.cylinderStatus;
         priceType = item.priceType;
       }
-
-      // Load accessory data if present
       if (item.hasAccessories) {
         includeAccessories = true;
         selectedAccessoryId = item.accessoryId;
         accessoryQuantity = item.accessoryQuantity ?? 1;
         accessoryPrice = item.accessoryPrice ?? 0.0;
-        accessoryPriceType = item.accessoryPriceType ?? 'Retail';
+        accessoryPriceType = item.accessoryPriceType ?? 'Custom';
       }
     }
     _priceController.text = price > 0 ? price.toString() : '';
@@ -93,8 +87,9 @@ class _AddItemSheetState extends State<AddItemSheet> {
     );
   }
 
+  // CHANGE 3: look up from API accessories list, not hardcoded
   Map<String, dynamic> get selectedAccessory {
-    return accessories.firstWhere(
+    return widget.accessories.firstWhere(
       (acc) => acc['id'] == selectedAccessoryId,
       orElse: () => {},
     );
@@ -107,15 +102,10 @@ class _AddItemSheetState extends State<AddItemSheet> {
   void _onPriceTypeChanged(String newPriceType) {
     setState(() {
       priceType = newPriceType;
-
-      if (priceType == 'Retail') {
-        // Set to retail price and make readonly
-        if (selectedType.isNotEmpty) {
-          price = (selectedType['price'] as num).toDouble();
-          _priceController.text = price.toString();
-        }
+      if (priceType == 'Retail' && selectedType.isNotEmpty) {
+        price = (selectedType['price'] as num).toDouble();
+        _priceController.text = price.toString();
       } else {
-        // Clear the textbox for Custom/KG
         price = 0.0;
         _priceController.text = '';
       }
@@ -125,12 +115,9 @@ class _AddItemSheetState extends State<AddItemSheet> {
   void _onAccessoryPriceTypeChanged(String newPriceType) {
     setState(() {
       accessoryPriceType = newPriceType;
-
-      if (accessoryPriceType == 'Retail') {
-        if (selectedAccessory.isNotEmpty) {
-          accessoryPrice = (selectedAccessory['price'] as num).toDouble();
-          _accessoryPriceController.text = accessoryPrice.toString();
-        }
+      if (accessoryPriceType == 'Retail' && selectedAccessory.isNotEmpty) {
+        accessoryPrice = (selectedAccessory['price'] as num).toDouble();
+        _accessoryPriceController.text = accessoryPrice.toString();
       } else {
         accessoryPrice = 0.0;
         _accessoryPriceController.text = '';
@@ -138,9 +125,10 @@ class _AddItemSheetState extends State<AddItemSheet> {
     });
   }
 
+  // CHANGE 3: accessory selector uses widget.accessories from API
   void _showAccessorySelector() {
     final TextEditingController searchController = TextEditingController();
-    List<Map<String, dynamic>> filteredAccessories = accessories;
+    List<Map<String, dynamic>> filtered = List.from(widget.accessories);
 
     showModalBottomSheet(
       context: context,
@@ -149,22 +137,6 @@ class _AddItemSheetState extends State<AddItemSheet> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            void filterAccessories(String query) {
-              setModalState(() {
-                if (query.isEmpty) {
-                  filteredAccessories = accessories;
-                } else {
-                  filteredAccessories = accessories
-                      .where(
-                        (acc) => acc['name'].toLowerCase().contains(
-                          query.toLowerCase(),
-                        ),
-                      )
-                      .toList();
-                }
-              });
-            }
-
             return Container(
               height: MediaQuery.of(context).size.height * 0.6,
               decoration: BoxDecoration(
@@ -208,7 +180,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                     ),
                   ),
 
-                  // Search Box
+                  // Search
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: TextField(
@@ -220,15 +192,6 @@ class _AddItemSheetState extends State<AddItemSheet> {
                         filled: true,
                         fillColor: Colors.white,
                         prefixIcon: const Icon(Icons.search),
-                        suffixIcon: searchController.text.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear),
-                                onPressed: () {
-                                  searchController.clear();
-                                  filterAccessories('');
-                                },
-                              )
-                            : null,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide.none,
@@ -238,13 +201,26 @@ class _AddItemSheetState extends State<AddItemSheet> {
                           vertical: 12,
                         ),
                       ),
-                      onChanged: filterAccessories,
+                      onChanged: (q) {
+                        setModalState(() {
+                          filtered = q.isEmpty
+                              ? List.from(widget.accessories)
+                              : widget.accessories
+                                    .where(
+                                      (a) => a['name']
+                                          .toString()
+                                          .toLowerCase()
+                                          .contains(q.toLowerCase()),
+                                    )
+                                    .toList();
+                        });
+                      },
                     ),
                   ),
 
-                  // Accessory List
+                  // List
                   Expanded(
-                    child: filteredAccessories.isEmpty
+                    child: filtered.isEmpty
                         ? Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -267,12 +243,11 @@ class _AddItemSheetState extends State<AddItemSheet> {
                           )
                         : ListView.builder(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemCount: filteredAccessories.length,
+                            itemCount: filtered.length,
                             itemBuilder: (context, index) {
-                              final accessory = filteredAccessories[index];
+                              final acc = filtered[index];
                               final isSelected =
-                                  selectedAccessoryId == accessory['id'];
-
+                                  selectedAccessoryId == acc['id'];
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 8),
                                 color: isSelected
@@ -288,7 +263,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                         : Colors.white,
                                   ),
                                   title: Text(
-                                    accessory['name'],
+                                    acc['name'],
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontWeight: isSelected
@@ -297,7 +272,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                     ),
                                   ),
                                   trailing: Text(
-                                    _formatCurrency(accessory['price']),
+                                    _formatCurrency(acc['price'] ?? 0),
                                     style: TextStyle(
                                       color: AppTheme.primaryOrange,
                                       fontSize: 14,
@@ -306,11 +281,10 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                   ),
                                   onTap: () {
                                     setState(() {
-                                      selectedAccessoryId = accessory['id'];
+                                      selectedAccessoryId = acc['id'];
                                       if (accessoryPriceType == 'Retail') {
-                                        accessoryPrice =
-                                            (accessory['price'] as num)
-                                                .toDouble();
+                                        accessoryPrice = (acc['price'] as num)
+                                            .toDouble();
                                         _accessoryPriceController.text =
                                             accessoryPrice.toString();
                                       }
@@ -366,499 +340,172 @@ class _AddItemSheetState extends State<AddItemSheet> {
           (selectedType['cylinderPrice'] as num?)?.toDouble() ?? 0.0;
     }
 
-    // Calculate item amount based on price type
     final double itemAmount;
     if (priceType == 'KG' && selectedType.isNotEmpty) {
-      // For KG: price per unit * quantity * cylinder capacity
       final int capacity = (selectedType['capacity'] as num?)?.toInt() ?? 0;
       itemAmount = price * quantity * capacity;
     } else {
-      // For Retail and Custom: price per unit * quantity
       itemAmount = price * quantity;
     }
 
-    // Calculate accessories amount
     final double accessoriesAmount = includeAccessories
         ? (accessoryPrice * accessoryQuantity)
         : 0.0;
-
     final double totalItemCost =
         itemAmount + cylinderAmount + accessoriesAmount;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.70,
-      decoration: BoxDecoration(
-        color: AppTheme.primaryBlue,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
+    return SafeArea(
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.70,
+        decoration: BoxDecoration(
+          color: AppTheme.primaryBlue,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
         ),
-      ),
-      child: Column(
-        children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 3, 16, 3),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(20),
-                topRight: Radius.circular(20),
+        child: Column(
+          children: [
+            // ── Header ──────────────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 3, 16, 3),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.add_shopping_cart, color: AppTheme.primaryOrange),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      widget.existingItem != null ? 'Edit Item' : 'Add Item',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
               ),
             ),
-            child: Row(
-              children: [
-                Icon(Icons.add_shopping_cart, color: AppTheme.primaryOrange),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    widget.existingItem != null ? 'Edit Item' : 'Add Item',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-          ),
 
-          // Form
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Cylinder Selection
-                  Row(
-                    children: [
-                      const Text(
-                        'Select Cylinder',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'Optional',
-                          style: TextStyle(color: Colors.white70, fontSize: 10),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: widget.cylinderTypes.map((type) {
-                      final isSelected = selectedCylinderTypeId == type['id'];
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            selectedCylinderTypeId = type['id'];
-                            price = (type['price'] as num).toDouble();
-                            cylinderPrice = (type['cylinderPrice'] as num)
-                                .toDouble();
-                            if (priceType == 'Retail') {
-                              _priceController.text = price.toString();
-                            }
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppTheme.primaryOrange
-                                : Colors.white.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: isSelected
-                                  ? AppTheme.primaryOrange
-                                  : Colors.white24,
-                              width: 2,
-                            ),
-                          ),
-                          child: Text(
-                            type['name'],
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: isSelected
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Quantity
-                  const Text(
-                    'Quantity',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: () {
-                          if (quantity > 1) {
-                            setState(() => quantity--);
-                          }
-                        },
-                        icon: const Icon(
-                          Icons.remove_circle,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            quantity.toString(),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () {
-                          setState(() => quantity++);
-                        },
-                        icon: const Icon(Icons.add_circle, color: Colors.white),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Price Type
-                  const Text(
-                    'Price Type',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildChip(
-                          'Retail',
-                          priceType == 'Retail',
-                          () => _onPriceTypeChanged('Retail'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildChip(
-                          'Custom',
-                          priceType == 'Custom',
-                          () => _onPriceTypeChanged('Custom'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildChip(
-                          'KG',
-                          priceType == 'KG',
-                          () => _onPriceTypeChanged('KG'),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Price
-                  const Text(
-                    'Price per Unit',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _priceController,
-                    readOnly: priceType == 'Retail',
-                    keyboardType: TextInputType.number,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: priceType == 'Retail'
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                    ),
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: priceType == 'Retail'
-                          ? Colors.white.withOpacity(0.15)
-                          : Colors.white.withOpacity(0.1),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
-                      prefixText: 'KSh ',
-                      prefixStyle: const TextStyle(color: Colors.white70),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      isDense: true,
-                    ),
-                    onChanged: (value) {
-                      setState(() {
-                        price = double.tryParse(value) ?? 0.0;
-                      });
-                    },
-                  ),
-
-                  // KG calculation helper text
-                  if (priceType == 'KG' && selectedType.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryOrange.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 14,
-                            color: AppTheme.primaryOrange,
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              'Amount = Price/KG × Qty × ${selectedType['capacity']}KG',
-                              style: TextStyle(
-                                color: AppTheme.primaryOrange,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 16),
-
-                  // Cylinder Status
-                  const Text(
-                    'Cylinder Status',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildChip(
-                          'Refill',
-                          cylinderStatus == 'Refill',
-                          () => setState(() {
-                            cylinderStatus = 'Refill';
-                            cylinderAmount = 0.0;
-                          }),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildChip(
-                          'Complete',
-                          cylinderStatus == 'Complete',
-                          () => setState(() {
-                            cylinderStatus = 'Complete';
-                            cylinderAmount = cylinderPrice * quantity;
-                          }),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildChip(
-                          'Lease',
-                          cylinderStatus == 'Lease',
-                          () => setState(() {
-                            cylinderStatus = 'Lease';
-                            cylinderAmount = 0.0;
-                          }),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Accessories Toggle
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: includeAccessories
-                            ? AppTheme.primaryOrange
-                            : Colors.white24,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            // ── Form ────────────────────────────────────────────────────
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── CHANGE 1: Cylinder selector — cylinders only ──
+                    Row(
                       children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.build_circle,
-                              color: includeAccessories
-                                  ? AppTheme.primaryOrange
-                                  : Colors.white70,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Add Accessories',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
+                        const Text(
+                          'Select Cylinder',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
                         ),
-                        Switch(
-                          value: includeAccessories,
-                          onChanged: (value) {
-                            setState(() {
-                              includeAccessories = value;
-                              if (!value) {
-                                // Reset accessories when toggle is off
-                                selectedAccessoryId = null;
-                                accessoryQuantity = 1;
-                                accessoryPrice = 0.0;
-                                accessoryPriceType = 'Retail';
-                                _accessoryPriceController.clear();
-                              }
-                            });
-                          },
-                          activeThumbColor: AppTheme.primaryOrange,
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'Optional',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 10,
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                  ),
-
-                  // Accessories Section
-                  if (includeAccessories) ...[
-                    const SizedBox(height: 16),
-
-                    // Accessory Selection
-                    const Text(
-                      'Select Accessory',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
                     const SizedBox(height: 8),
-                    InkWell(
-                      onTap: _showAccessorySelector,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
+                    widget.cylinderTypes.isEmpty
+                        ? Text(
+                            'No cylinders available',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.5),
+                              fontSize: 13,
                             ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.build_circle,
-                              color: AppTheme.primaryOrange,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                selectedAccessoryId != null &&
-                                        selectedAccessory.isNotEmpty
-                                    ? selectedAccessory['name']
-                                    : 'Select Accessory',
-                                style: TextStyle(
-                                  color: selectedAccessoryId != null
-                                      ? Colors.black87
-                                      : Colors.grey[600],
-                                  fontSize: 14,
+                          )
+                        : Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            // CHANGE 1: widget.cylinderTypes contains ONLY
+                            // cylinders — accessories are excluded
+                            children: widget.cylinderTypes.map((type) {
+                              final isSelected =
+                                  selectedCylinderTypeId == type['id'];
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    selectedCylinderTypeId = type['id'];
+                                    cylinderPrice =
+                                        (type['cylinderPrice'] as num)
+                                            .toDouble();
+                                    // CHANGE 4: only auto-fill price for Retail
+                                    if (priceType == 'Retail') {
+                                      price = (type['price'] as num).toDouble();
+                                      _priceController.text = price.toString();
+                                    } else {
+                                      price = 0.0;
+                                      _priceController.text = '';
+                                    }
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? AppTheme.primaryOrange
+                                        : Colors.white.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? AppTheme.primaryOrange
+                                          : Colors.white24,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    type['name'],
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
                                 ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            Icon(
-                              Icons.arrow_drop_down,
-                              color: AppTheme.primaryBlue,
-                              size: 24,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                              );
+                            }).toList(),
+                          ),
 
                     const SizedBox(height: 16),
 
-                    // Accessory Quantity
+                    // ── Quantity ─────────────────────────────────────────
                     const Text(
-                      'Accessory Quantity',
+                      'Quantity',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -870,9 +517,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                       children: [
                         IconButton(
                           onPressed: () {
-                            if (accessoryQuantity > 1) {
-                              setState(() => accessoryQuantity--);
-                            }
+                            if (quantity > 1) setState(() => quantity--);
                           },
                           icon: const Icon(
                             Icons.remove_circle,
@@ -887,7 +532,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              accessoryQuantity.toString(),
+                              quantity.toString(),
                               textAlign: TextAlign.center,
                               style: const TextStyle(
                                 color: Colors.white,
@@ -898,9 +543,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                           ),
                         ),
                         IconButton(
-                          onPressed: () {
-                            setState(() => accessoryQuantity++);
-                          },
+                          onPressed: () => setState(() => quantity++),
                           icon: const Icon(
                             Icons.add_circle,
                             color: Colors.white,
@@ -911,9 +554,9 @@ class _AddItemSheetState extends State<AddItemSheet> {
 
                     const SizedBox(height: 16),
 
-                    // Accessory Price Type (Retail/Custom only, no KG)
+                    // ── CHANGE 4: Price Type — Custom default, Retail centre
                     const Text(
-                      'Accessory Price Type',
+                      'Price Type',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -923,19 +566,28 @@ class _AddItemSheetState extends State<AddItemSheet> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
+                        // CHANGE 4: order → Custom | Retail | KG
                         Expanded(
                           child: _buildChip(
-                            'Retail',
-                            accessoryPriceType == 'Retail',
-                            () => _onAccessoryPriceTypeChanged('Retail'),
+                            'Custom',
+                            priceType == 'Custom',
+                            () => _onPriceTypeChanged('Custom'),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: _buildChip(
-                            'Custom',
-                            accessoryPriceType == 'Custom',
-                            () => _onAccessoryPriceTypeChanged('Custom'),
+                            'Retail',
+                            priceType == 'Retail',
+                            () => _onPriceTypeChanged('Retail'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildChip(
+                            'KG',
+                            priceType == 'KG',
+                            () => _onPriceTypeChanged('KG'),
                           ),
                         ),
                       ],
@@ -943,9 +595,9 @@ class _AddItemSheetState extends State<AddItemSheet> {
 
                     const SizedBox(height: 16),
 
-                    // Accessory Price
+                    // ── Price per Unit ────────────────────────────────────
                     const Text(
-                      'Accessory Price per Unit',
+                      'Price per Unit',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -954,18 +606,18 @@ class _AddItemSheetState extends State<AddItemSheet> {
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
-                      controller: _accessoryPriceController,
-                      readOnly: accessoryPriceType == 'Retail',
+                      controller: _priceController,
+                      readOnly: priceType == 'Retail',
                       keyboardType: TextInputType.number,
                       style: TextStyle(
                         color: Colors.white,
-                        fontWeight: accessoryPriceType == 'Retail'
+                        fontWeight: priceType == 'Retail'
                             ? FontWeight.bold
                             : FontWeight.normal,
                       ),
                       decoration: InputDecoration(
                         filled: true,
-                        fillColor: accessoryPriceType == 'Retail'
+                        fillColor: priceType == 'Retail'
                             ? Colors.white.withOpacity(0.15)
                             : Colors.white.withOpacity(0.1),
                         border: OutlineInputBorder(
@@ -982,199 +634,536 @@ class _AddItemSheetState extends State<AddItemSheet> {
                       ),
                       onChanged: (value) {
                         setState(() {
-                          accessoryPrice = double.tryParse(value) ?? 0.0;
+                          price = double.tryParse(value) ?? 0.0;
                         });
                       },
                     ),
-                  ],
 
-                  const SizedBox(height: 16),
-
-                  // Summary
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white24),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    if (priceType == 'KG' && selectedType.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryOrange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
                           children: [
-                            const Text(
-                              'Gas Amount:',
-                              style: TextStyle(color: Colors.white),
+                            Icon(
+                              Icons.info_outline,
+                              size: 14,
+                              color: AppTheme.primaryOrange,
                             ),
-                            Text(
-                              _formatCurrency(itemAmount),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Amount = Price/KG × Qty × ${selectedType['capacity']}KG',
+                                style: TextStyle(
+                                  color: AppTheme.primaryOrange,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ),
                           ],
                         ),
-                        if (cylinderStatus == 'Complete') ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                'Cylinder Amount:',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                              Text(
-                                _formatCurrency(cylinderAmount),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
+                      ),
+                    ],
+
+                    const SizedBox(height: 16),
+
+                    // ── CHANGE 5: Cylinder Status — Lease | Complete | Refill
+                    const Text(
+                      'Cylinder Status',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        // CHANGE 5: order → Lease | Complete | Refill
+                        Expanded(
+                          child: _buildChip(
+                            'Lease',
+                            cylinderStatus == 'Lease',
+                            () => setState(() {
+                              cylinderStatus = 'Lease';
+                              cylinderAmount = 0.0;
+                            }),
                           ),
-                        ],
-                        if (includeAccessories && accessoriesAmount > 0) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                'Accessories:',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                              Text(
-                                _formatCurrency(accessoriesAmount),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildChip(
+                            'Complete',
+                            cylinderStatus == 'Complete',
+                            () => setState(() {
+                              cylinderStatus = 'Complete';
+                              cylinderAmount = cylinderPrice * quantity;
+                            }),
                           ),
-                        ],
-                        const Divider(color: Colors.white24, height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Total:',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              _formatCurrency(totalItemCost),
-                              style: TextStyle(
-                                color: AppTheme.primaryOrange,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildChip(
+                            'Refill',
+                            cylinderStatus == 'Refill',
+                            () => setState(() {
+                              cylinderStatus = 'Refill';
+                              cylinderAmount = 0.0;
+                            }),
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ),
 
-          // Add Button
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  // Enable button if either cylinder OR accessory is selected
-                  final hasCylinder = selectedCylinderTypeId != null;
-                  final hasAccessory =
-                      includeAccessories && selectedAccessoryId != null;
+                    const SizedBox(height: 16),
 
-                  if (!hasCylinder && !hasAccessory) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Please select at least a cylinder or an accessory',
+                    // ── CHANGE 2: Accessories toggle — uses API list ──────
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: includeAccessories
+                              ? AppTheme.primaryOrange
+                              : Colors.white24,
                         ),
                       ),
-                    );
-                    return;
-                  }
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.build_circle,
+                                color: includeAccessories
+                                    ? AppTheme.primaryOrange
+                                    : Colors.white70,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Add Accessories',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Switch(
+                            value: includeAccessories,
+                            onChanged: (value) {
+                              setState(() {
+                                includeAccessories = value;
+                                if (!value) {
+                                  selectedAccessoryId = null;
+                                  accessoryQuantity = 1;
+                                  accessoryPrice = 0.0;
+                                  accessoryPriceType = 'Custom';
+                                  _accessoryPriceController.clear();
+                                }
+                              });
+                            },
+                            activeThumbColor: AppTheme.primaryOrange,
+                          ),
+                        ],
+                      ),
+                    ),
 
-                  // Add cylinder item if selected
-                  if (hasCylinder) {
-                    final cylinderItem = SaleItem(
-                      cylinderTypeId: selectedCylinderTypeId!,
-                      cylinderTypeName: selectedType['name'],
-                      quantity: quantity,
-                      price: price,
-                      amount: itemAmount,
-                      cylinderPrice: cylinderPrice,
-                      cylinderAmount: cylinderAmount,
-                      cylinderStatus: cylinderStatus,
-                      priceType: priceType,
-                      isTagged: false,
-                      taggedBarcodes: [],
-                      accessoryId: null,
-                      accessoryName: null,
-                      accessoryQuantity: null,
-                      accessoryPrice: null,
-                      accessoryAmount: null,
-                      accessoryPriceType: null,
-                    );
-                    widget.onItemAdded(cylinderItem);
-                  }
+                    // ── Accessories section ───────────────────────────────
+                    if (includeAccessories) ...[
+                      const SizedBox(height: 16),
 
-                  // Add accessory as separate item if selected
-                  if (hasAccessory) {
-                    final accessoryItem = SaleItem(
-                      cylinderTypeId: 0,
-                      cylinderTypeName: 'Accessory Only',
-                      quantity: 0,
-                      price: 0.0,
-                      amount: 0.0,
-                      cylinderPrice: 0.0,
-                      cylinderAmount: 0.0,
-                      cylinderStatus: 'N/A',
-                      priceType: 'N/A',
-                      isTagged: false,
-                      taggedBarcodes: [],
-                      accessoryId: selectedAccessoryId,
-                      accessoryName: selectedAccessory['name'],
-                      accessoryQuantity: accessoryQuantity,
-                      accessoryPrice: accessoryPrice,
-                      accessoryAmount: accessoriesAmount,
-                      accessoryPriceType: accessoryPriceType,
-                    );
-                    widget.onItemAdded(accessoryItem);
-                  }
+                      const Text(
+                        'Select Accessory',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: widget.accessories.isEmpty
+                            ? null
+                            : _showAccessorySelector,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.build_circle,
+                                color: AppTheme.primaryOrange,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  widget.accessories.isEmpty
+                                      ? 'No accessories available'
+                                      : (selectedAccessoryId != null &&
+                                                selectedAccessory.isNotEmpty
+                                            ? selectedAccessory['name']
+                                            : 'Select Accessory'),
+                                  style: TextStyle(
+                                    color: selectedAccessoryId != null
+                                        ? Colors.black87
+                                        : Colors.grey[600],
+                                    fontSize: 14,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Icon(
+                                Icons.arrow_drop_down,
+                                color: AppTheme.primaryBlue,
+                                size: 24,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
 
-                  Navigator.pop(context);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryOrange,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                      const SizedBox(height: 16),
+
+                      const Text(
+                        'Accessory Quantity',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          IconButton(
+                            onPressed: () {
+                              if (accessoryQuantity > 1)
+                                setState(() => accessoryQuantity--);
+                            },
+                            icon: const Icon(
+                              Icons.remove_circle,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                accessoryQuantity.toString(),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () =>
+                                setState(() => accessoryQuantity++),
+                            icon: const Icon(
+                              Icons.add_circle,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      const Text(
+                        'Accessory Price Type',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildChip(
+                              'Custom',
+                              accessoryPriceType == 'Custom',
+                              () => _onAccessoryPriceTypeChanged('Custom'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildChip(
+                              'Retail',
+                              accessoryPriceType == 'Retail',
+                              () => _onAccessoryPriceTypeChanged('Retail'),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      const Text(
+                        'Accessory Price per Unit',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _accessoryPriceController,
+                        readOnly: accessoryPriceType == 'Retail',
+                        keyboardType: TextInputType.number,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: accessoryPriceType == 'Retail'
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: accessoryPriceType == 'Retail'
+                              ? Colors.white.withOpacity(0.15)
+                              : Colors.white.withOpacity(0.1),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide.none,
+                          ),
+                          prefixText: 'KSh ',
+                          prefixStyle: const TextStyle(color: Colors.white70),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          isDense: true,
+                        ),
+                        onChanged: (value) {
+                          setState(() {
+                            accessoryPrice = double.tryParse(value) ?? 0.0;
+                          });
+                        },
+                      ),
+                    ],
+
+                    const SizedBox(height: 16),
+
+                    // ── Summary ──────────────────────────────────────────
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Gas Amount:',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              Text(
+                                _formatCurrency(itemAmount),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (cylinderStatus == 'Complete') ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Cylinder Amount:',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                                Text(
+                                  _formatCurrency(cylinderAmount),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (includeAccessories && accessoriesAmount > 0) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Accessories:',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                                Text(
+                                  _formatCurrency(accessoriesAmount),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          const Divider(color: Colors.white24, height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Total:',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                _formatCurrency(totalItemCost),
+                                style: TextStyle(
+                                  color: AppTheme.primaryOrange,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                child: Text(
-                  widget.existingItem != null ? 'Update Item' : 'Add Item',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            // ── Add / Update button ──────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    final hasCylinder = selectedCylinderTypeId != null;
+                    final hasAccessory =
+                        includeAccessories && selectedAccessoryId != null;
+
+                    if (!hasCylinder && !hasAccessory) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Please select at least a cylinder or an accessory',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+
+                    if (hasCylinder) {
+                      widget.onItemAdded(
+                        SaleItem(
+                          cylinderTypeId: selectedCylinderTypeId!,
+                          cylinderTypeName: selectedType['name'],
+                          quantity: quantity,
+                          price: price,
+                          amount: itemAmount,
+                          cylinderPrice: cylinderPrice,
+                          cylinderAmount: cylinderAmount,
+                          cylinderStatus: cylinderStatus,
+                          priceType: priceType,
+                          capacity:
+                              (selectedType['capacity'] as num?)?.toDouble() ??
+                              0,
+                          isTagged: false,
+                          taggedBarcodes: [],
+                          accessoryId: null,
+                          accessoryName: null,
+                          accessoryQuantity: null,
+                          accessoryPrice: null,
+                          accessoryAmount: null,
+                          accessoryPriceType: null,
+                        ),
+                      );
+                    }
+
+                    if (hasAccessory) {
+                      widget.onItemAdded(
+                        SaleItem(
+                          cylinderTypeId: 0,
+                          cylinderTypeName: 'Accessory Only',
+                          quantity: 0,
+                          price: 0.0,
+                          amount: 0.0,
+                          cylinderPrice: 0.0,
+                          cylinderAmount: 0.0,
+                          cylinderStatus: 'N/A',
+                          priceType: 'N/A',
+                          isTagged: false,
+                          taggedBarcodes: [],
+                          accessoryId: selectedAccessoryId,
+                          accessoryName: selectedAccessory['name'],
+                          accessoryQuantity: accessoryQuantity,
+                          accessoryPrice: accessoryPrice,
+                          accessoryAmount: accessoriesAmount,
+                          accessoryPriceType: accessoryPriceType,
+                        ),
+                      );
+                    }
+
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryOrange,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    widget.existingItem != null ? 'Update Item' : 'Add Item',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

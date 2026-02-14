@@ -63,8 +63,8 @@ class ApiService {
       headers: _headers,
       body: jsonEncode(payload), // Just send the string directly
     );
-    log('STATUS: ${response.statusCode}');
-    log('BODY: ${response.body}');
+    // log('STATUS: ${response.statusCode}');
+    // log('BODY: ${response.body}');
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -130,8 +130,8 @@ class ApiService {
     }
 
     final response = await http.get(Uri.parse(url), headers: _headers);
-    log('STATUS: ${response.statusCode}');
-    log('BODY: ${response.body}');
+    // log('STATUS: ${response.statusCode}');
+    // log('BODY: ${response.body}');
 
     if (response.statusCode == 200) {
       final List<dynamic> data = json.decode(response.body);
@@ -171,15 +171,15 @@ class ApiService {
 
   // Create a new sale
   static Future<Map<String, dynamic>> createSale(
-    Map<String, dynamic> saleData,
+    Map<String, dynamic> data,
   ) async {
     try {
-      final url = Uri.parse('$_baseUrl/ValidateRefillCylinder');
+      final url = Uri.parse('$_baseUrl/PostLpgSale');
 
       final response = await http.post(
         url,
         headers: _headers,
-        body: jsonEncode(saleData), // Just send the string directly
+        body: jsonEncode(data), // Just send the string directly
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {

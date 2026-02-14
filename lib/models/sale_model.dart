@@ -406,7 +406,7 @@ class AccessoryDto {
   }
 
   Map<String, dynamic> toItemSheetFormat() => {
-    'id': lubId,
+    'id': lubId.toString(),
     'lubId': lubId,
     'name': lubName,
     'price': retailPrice,
