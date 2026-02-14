@@ -170,28 +170,7 @@ class ApiService {
   }
 
   // Create a new sale
-  static Future<void> createSale(Map<String, dynamic> saleData) async {
-    try {
-      final url = Uri.parse('$_baseUrl/ValidateRefillCylinder');
-
-      final response = await http.post(
-        url,
-        headers: _headers,
-        body: jsonEncode(saleData), // Just send the string directly
-      );
-
-      if (response.statusCode != 200 && response.statusCode != 201) {
-        throw Exception('Failed to create sale: ${response.body}');
-      }
-    } catch (e) {
-      log('Error creating sale: $e');
-      rethrow;
-    }
-  }
-
-  // Update an existing sale
-  static Future<void> updateSale(
-    int saleId,
+  static Future<Map<String, dynamic>> createSale(
     Map<String, dynamic> saleData,
   ) async {
     try {
@@ -203,12 +182,34 @@ class ApiService {
         body: jsonEncode(saleData), // Just send the string directly
       );
 
-      if (response.statusCode != 200) {
-        throw Exception('Failed to update sale: ${response.body}');
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
       }
+      throw Exception('Failed to create sale: ${response.body}');
     } catch (e) {
-      log('Error updating sale: $e');
+      log('Error creating sale: $e');
       rethrow;
     }
+  }
+
+  // Update an existing sale
+  static Future<Map<String, dynamic>> updateSale(
+    Map<String, dynamic> payload,
+  ) async {
+    final id = payload['LpgSaleID'];
+    final url = Uri.parse('$_baseUrl/UpdateSale/$id');
+    final response = await http.put(
+      url,
+      headers: _headers,
+      body: jsonEncode(payload), // Just send the string directly
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 204) {
+      if (response.body.isEmpty) return {'success': true};
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(
+      'updateSale failed ${response.statusCode}: ${response.body}',
+    );
   }
 }

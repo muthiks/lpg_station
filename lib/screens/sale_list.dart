@@ -4,15 +4,22 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lpg_station/models/sale_model.dart';
-import 'package:lpg_station/screens/add_sale.dart';
 import 'package:lpg_station/services/api_service.dart';
 import 'package:lpg_station/theme/theme.dart';
 
 class SaleList extends StatefulWidget {
   final VoidCallback? onNavigateToAdd;
+  // onEditSale: called with the sale to edit — parent swaps the view
+  // same pattern as onNavigateToAdd so bottom nav stays visible
+  final void Function(SaleDto sale)? onEditSale;
   final String userRole;
 
-  const SaleList({super.key, this.onNavigateToAdd, this.userRole = 'Manager'});
+  const SaleList({
+    super.key,
+    this.onNavigateToAdd,
+    this.onEditSale,
+    this.userRole = 'Manager',
+  });
 
   @override
   State<SaleList> createState() => _SaleListState();
@@ -125,34 +132,13 @@ class _SaleListState extends State<SaleList> {
       _showSnack('No permission to edit', isError: true);
       return;
     }
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      isDismissible: false,
-      enableDrag: false,
-      builder: (_) => Container(
-        height: MediaQuery.of(context).size.height * 0.93,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppTheme.primaryBlue, Color(0xFFc0440a)],
-          ),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          child: AddSale(
-            onBack: () {
-              Navigator.pop(context);
-              _loadSales(_selectedStation?.stationID);
-            },
-            editSale: sale,
-          ),
-        ),
-      ),
-    );
+    // Delegate to parent shell via callback — same as onNavigateToAdd.
+    // Parent swaps the body widget so bottom nav stays visible.
+    if (widget.onEditSale != null) {
+      widget.onEditSale!(sale);
+    } else {
+      _showSnack('Edit not configured', isError: true);
+    }
   }
 
   // ════════════════════════════ ACTIONS ════════════════════════════════

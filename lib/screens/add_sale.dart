@@ -57,8 +57,6 @@ class _AddSaleState extends State<AddSale> {
   @override
   void initState() {
     super.initState();
-    // Everything chains from _loadStations so dropdowns are ready before we
-    // try to populate them in edit mode.
     _loadStations();
   }
 
@@ -84,22 +82,25 @@ class _AddSaleState extends State<AddSale> {
       });
 
       if (widget.isEditMode) {
-        // ── EDIT MODE: find the station that matches the sale ────────
         final sale = widget.editSale!;
+
+        // StationID is now always returned by the API.
+        // Match by StationID directly — name and single-station as fallbacks.
+        // stationID is always present from the API — match directly.
+        // Name and single-station are kept as safety fallbacks.
         final match =
-            _stations.where((s) => s.stationID == sale.stationID).firstOrNull
-            // fallback: match by name if stationID not on sale
-            ??
-            _stations
-                .where((s) => s.stationName == sale.stationName)
-                .firstOrNull
-            // last resort for single-station users
-            ??
+            _stations.where((s) => s.stationID == sale.stationID).firstOrNull ??
+            (sale.stationName != null
+                ? _stations
+                      .where((s) => s.stationName == sale.stationName)
+                      .firstOrNull
+                : null) ??
             (_stations.length == 1 ? _stations.first : null);
 
         if (match != null) {
           setState(() => _selectedStation = match);
-          // Load dependents in parallel then populate dropdowns
+          // Load customers, delivery guys, and stock in parallel,
+          // then populate all fields once data is ready.
           await Future.wait([
             _loadCustomersForEdit(match.stationID),
             _loadDeliveryGuysForEdit(match.stationID),
@@ -108,7 +109,6 @@ class _AddSaleState extends State<AddSale> {
           _populateEditFields(sale);
         }
       } else {
-        // ── ADD MODE: auto-select if single station ──────────────────
         if (_stations.length == 1) {
           setState(() => _selectedStation = _stations.first);
           _loadAllForStation(_selectedStation!.stationID);
@@ -122,7 +122,6 @@ class _AddSaleState extends State<AddSale> {
     }
   }
 
-  // Loads customers without clearing selected (for edit mode)
   Future<void> _loadCustomersForEdit(int stationId) async {
     setState(() => _isLoadingCustomers = true);
     try {
@@ -137,7 +136,6 @@ class _AddSaleState extends State<AddSale> {
     }
   }
 
-  // Loads delivery guys without clearing selected (for edit mode)
   Future<void> _loadDeliveryGuysForEdit(int stationId) async {
     setState(() => _isLoadingDeliveryGuys = true);
     try {
@@ -152,22 +150,16 @@ class _AddSaleState extends State<AddSale> {
     }
   }
 
-  // ── Runs AFTER customers + delivery guys are loaded ──────────────────
   void _populateEditFields(SaleDto sale) {
     setState(() {
-      // Delivery type
       final hasDelivery =
           sale.deliveryGuy != null &&
           sale.deliveryGuy!.isNotEmpty &&
           sale.deliveryGuy != 'N/A';
       _deliveryType = hasDelivery ? 'Delivery' : 'Own Picking';
-
-      // Customer — match by ID (most reliable)
       _selectedCustomer = _customers
           .where((c) => c.customerID == sale.customerID)
           .firstOrNull;
-
-      // Delivery guy — match by full name, fallback to id
       if (hasDelivery) {
         _selectedDeliveryGuy = _deliveryGuys
             .where(
@@ -175,8 +167,6 @@ class _AddSaleState extends State<AddSale> {
             )
             .firstOrNull;
       }
-
-      // Sale items from saleDetails
       saleItems = sale.saleDetails
           .map(
             (d) => SaleItem(
@@ -189,6 +179,7 @@ class _AddSaleState extends State<AddSale> {
               cylinderAmount: d.cylinderAmount,
               cylinderStatus: d.cylStatus,
               priceType: d.priceType,
+              capacity: d.capacity ?? 0, // carry capacity from API for submit
               isTagged: false,
               taggedBarcodes: [],
             ),
@@ -197,8 +188,6 @@ class _AddSaleState extends State<AddSale> {
     });
     _calculateTotals();
   }
-
-  // ── Add mode helpers ─────────────────────────────────────────────────
 
   void _loadAllForStation(int stationId) {
     _loadCustomers(stationId);
@@ -441,6 +430,52 @@ class _AddSaleState extends State<AddSale> {
     );
   }
 
+  // ── CHANGE 2: Swipe-to-delete with confirmation dialog ───────────────
+  Future<bool> _confirmItemDelete(int index) async {
+    final item = saleItems[index];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Row(
+          children: [
+            Icon(Icons.delete_outline, color: Colors.red, size: 22),
+            SizedBox(width: 8),
+            Text('Remove Item', style: TextStyle(fontSize: 16)),
+          ],
+        ),
+        content: Text(
+          'Remove "${item.cylinderTypeName}" (x${item.quantity}) from this sale?',
+          style: const TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text('Remove', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      setState(() {
+        saleItems.removeAt(index);
+        _calculateTotals();
+      });
+      return true;
+    }
+    return false;
+  }
+
   void _calculateTotals() {
     totalAmount = saleItems.fold(0.0, (s, i) => s + i.totalAmount);
     setState(() {});
@@ -553,7 +588,7 @@ class _AddSaleState extends State<AddSale> {
       _scannerFocusNode.unfocus();
   }
 
-  // ════════════════════════════ SAVE ═══════════════════════════════════
+  // ════════════════════════════ SAVE — CHANGE 3: API JSON ══════════════
 
   void _saveSale() async {
     if (_selectedStation == null) {
@@ -579,9 +614,46 @@ class _AddSaleState extends State<AddSale> {
 
     setState(() => _isSubmitting = true);
     try {
-      await Future.delayed(
-        const Duration(seconds: 1),
-      ); // TODO: ApiService.createSale / updateSale
+      // ── Build payload matching the required JSON format ───────────
+      final payload = {
+        'LpgSaleID': widget.isEditMode ? widget.editSale!.lpgSaleID : 0,
+        'SaleDate': DateTime.now().toUtc().toIso8601String(),
+        'CustomerID': _selectedCustomer!.customerID,
+        'CustomerName': _selectedCustomer!.customerName,
+        'stationID': _selectedStation!.stationID,
+        'Total': totalAmount,
+        'DeliveryGuy':
+            _deliveryType == 'Delivery' && _selectedDeliveryGuy != null
+            ? _selectedDeliveryGuy!.fullName
+            : '',
+        'SaleDetails': saleItems
+            .map(
+              (item) => {
+                'SaleDetailID': 0,
+                'CylinderID': item.cylinderTypeId,
+                'Quantity': item.quantity,
+                'Status': item.cylinderStatus, // Refill | Complete | Lease
+                'PriceType': item.priceType, // Retail | Custom | KG
+                'Price': item.price,
+                'CylinderPrice': item.cylinderPrice,
+                'CylinderAmount': item.cylinderAmount,
+                'Capacity': _getCapacity(
+                  item.cylinderTypeId,
+                  knownCapacity: item.capacity,
+                ),
+              },
+            )
+            .toList(),
+      };
+
+      log('Submitting sale payload: $payload');
+
+      if (widget.isEditMode) {
+        await ApiService.updateSale(payload);
+      } else {
+        await ApiService.createSale(payload);
+      }
+
       _showSnack(widget.isEditMode ? 'Sale updated!' : 'Sale saved!');
       widget.onBack();
     } catch (e) {
@@ -589,6 +661,21 @@ class _AddSaleState extends State<AddSale> {
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  // Returns capacity for a sale item.
+  // Prefers the value already on the SaleDetailDto (populated from the API),
+  // with a fallback to the stock items list loaded for this session.
+  double _getCapacity(int cylinderTypeId, {double? knownCapacity}) {
+    if (knownCapacity != null && knownCapacity > 0) return knownCapacity;
+    final match = _allStockItems
+        .where((i) => i['id'] == cylinderTypeId || i['lubId'] == cylinderTypeId)
+        .firstOrNull;
+    if (match != null) {
+      final cap = match['capacity'];
+      if (cap != null) return (cap as num).toDouble();
+    }
+    return 0;
   }
 
   void _showSnack(String msg, {bool isError = false}) {
@@ -647,36 +734,50 @@ class _AddSaleState extends State<AddSale> {
     return _scaffold(child: _buildForm());
   }
 
-  // ─────────────────── Scaffold wrapper (shared header) ────────────────
+  // ─────────────────── Scaffold wrapper ────────────────────────────────
 
   Widget _scaffold({required Widget child}) {
     return Stack(
       children: [
         Column(
           children: [
-            // ── Page title row (matches screenshot: ⊕ icon + title) ──────
+            // ── CHANGE 1: back icon wired to widget.onBack ────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 16, 6),
+              padding: const EdgeInsets.fromLTRB(4, 10, 16, 6),
               child: Row(
                 children: [
+                  // Back arrow — calls onBack which pops to sales list
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                     icon: const Icon(
                       Icons.arrow_circle_left,
                       color: Colors.white,
-                      size: 22,
+                      size: 26,
                     ),
-                    onPressed: null,
+                    onPressed: widget.onBack, // ← FIXED: was null
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    widget.isEditMode ? 'Edit Sale' : 'Add New Sale',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.isEditMode ? 'Edit Sale' : 'Add New Sale',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      if (widget.isEditMode && widget.editSale != null)
+                        Text(
+                          widget.editSale!.invoiceNo,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white.withOpacity(0.6),
+                          ),
+                        ),
+                    ],
                   ),
                   const Spacer(),
                   if (_isLoadingStock)
@@ -870,16 +971,17 @@ class _AddSaleState extends State<AddSale> {
                     ),
                   )
                 else
+                  // ── CHANGE 2: confirmDismiss shows dialog before removing ─
                   ...saleItems.asMap().entries.map((e) {
                     final idx = e.key;
                     final item = e.value;
                     return Dismissible(
                       key: Key('item_${idx}_${item.cylinderTypeId}'),
                       direction: DismissDirection.endToStart,
-                      onDismissed: (_) => setState(() {
-                        saleItems.removeAt(idx);
-                        _calculateTotals();
-                      }),
+                      // confirmDismiss handles removal itself — always return false
+                      // so Dismissible never auto-removes the widget
+                      confirmDismiss: (_) =>
+                          _confirmItemDelete(idx).then((_) => false),
                       background: Container(
                         alignment: Alignment.centerRight,
                         padding: const EdgeInsets.only(right: 20),
@@ -888,10 +990,20 @@ class _AddSaleState extends State<AddSale> {
                           color: Colors.red,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(
-                          Icons.delete,
-                          color: Colors.white,
-                          size: 28,
+                        child: const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.delete, color: Colors.white, size: 28),
+                            SizedBox(height: 4),
+                            Text(
+                              'Remove',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       child: GestureDetector(
@@ -899,10 +1011,7 @@ class _AddSaleState extends State<AddSale> {
                         child: SaleItemCard(
                           item: item,
                           onEdit: () => _editSaleItem(idx),
-                          onDelete: () => setState(() {
-                            saleItems.removeAt(idx);
-                            _calculateTotals();
-                          }),
+                          onDelete: () => _confirmItemDelete(idx),
                           onBarcodeDeleted: (bc) => setState(() {
                             item.taggedBarcodes.remove(bc);
                             item.quantity = item.taggedBarcodes.length;
@@ -1017,7 +1126,6 @@ class _AddSaleState extends State<AddSale> {
     );
   }
 
-  /// White tap-to-open field (station, customer) — original design
   Widget _tapField({
     required IconData icon,
     required String? value,
@@ -1067,7 +1175,6 @@ class _AddSaleState extends State<AddSale> {
     );
   }
 
-  /// Dropdown — same white card style as screenshot
   Widget _styledDropdown<T>({
     required IconData icon,
     required T? value,
@@ -1141,7 +1248,6 @@ class _AddSaleState extends State<AddSale> {
     );
   }
 
-  /// Auto-selected field badge — white card matching other fields
   Widget _autoField(IconData icon, String value) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -1190,7 +1296,6 @@ class _AddSaleState extends State<AddSale> {
     );
   }
 
-  /// Loading field — white card matching other fields
   Widget _loadingField(String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),

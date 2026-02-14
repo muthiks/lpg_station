@@ -7,7 +7,8 @@ class SaleItem {
   final double cylinderPrice;
   double cylinderAmount;
   final String cylinderStatus; // Refill, Complete, or Lease
-  final String priceType; // Retail, Custom, or KG
+  final String priceType;
+  double capacity; // Retail, Custom, or KG
   final bool isTagged;
   final List<String> taggedBarcodes;
 
@@ -37,6 +38,7 @@ class SaleItem {
     required this.cylinderAmount,
     required this.cylinderStatus,
     required this.priceType,
+    this.capacity = 0,
     this.isTagged = false,
     List<String>? taggedBarcodes,
     this.accessoryId,
