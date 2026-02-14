@@ -89,6 +89,7 @@ class SaleDto {
   final DateTime saleDate;
   final double balance;
   final int customerID;
+  final int stationID;
   final String customerName;
   final String? customerPhone;
   final String invoiceNo;
@@ -109,6 +110,7 @@ class SaleDto {
     required this.saleDate,
     required this.balance,
     required this.customerID,
+    required this.stationID,
     required this.customerName,
     this.customerPhone,
     required this.invoiceNo,
@@ -148,6 +150,7 @@ class SaleDto {
           DateTime.now(),
       balance: _parseDouble(_get(json, 'Balance', 'balance')),
       customerID: _parseInt(_get(json, 'CustomerID', 'customerID')),
+      stationID: _parseInt(_get(json, 'StationID', 'stationID')),
       customerName:
           _get(json, 'CustomerName', 'customerName')?.toString() ?? '',
       customerPhone: _get(json, 'CustomerPhone', 'customerPhone')?.toString(),

@@ -1,5 +1,8 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:lpg_station/models/receive_model.dart';
+import 'package:lpg_station/services/api_service.dart';
 import 'package:lpg_station/theme/theme.dart';
 import 'package:lpg_station/widget/success_dialog.dart';
 
@@ -21,8 +24,8 @@ class ReceiveStockBottomSheet extends StatefulWidget {
 class _ReceiveStockBottomSheetState extends State<ReceiveStockBottomSheet> {
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, bool> _hasError = {};
+  bool _isSubmitting = false;
 
-  // ✅ Fix 1: listen to controllers so button reacts to onTap auto-fill too
   bool get _hasAnyInput =>
       _controllers.values.any((c) => c.text.trim().isNotEmpty);
 
@@ -31,10 +34,8 @@ class _ReceiveStockBottomSheetState extends State<ReceiveStockBottomSheet> {
   @override
   void initState() {
     super.initState();
-
     for (final c in widget.receive.cylinders) {
       final controller = TextEditingController(text: '');
-      // ✅ Fix 1: add listener so setState fires on every change including onTap fill
       controller.addListener(() => setState(() {}));
       _controllers[c.cylinderType] = controller;
       _hasError[c.cylinderType] = false;
@@ -52,7 +53,6 @@ class _ReceiveStockBottomSheetState extends State<ReceiveStockBottomSheet> {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      // ✅ Fix 2: keeps button above system nav bar
       child: Container(
         height: MediaQuery.of(context).size.height * 0.65,
         decoration: BoxDecoration(
@@ -62,7 +62,6 @@ class _ReceiveStockBottomSheetState extends State<ReceiveStockBottomSheet> {
         child: Column(
           children: [
             _header(),
-
             Expanded(
               child: ListView.separated(
                 padding: const EdgeInsets.all(16),
@@ -92,7 +91,6 @@ class _ReceiveStockBottomSheetState extends State<ReceiveStockBottomSheet> {
                             ],
                           ),
                         ),
-
                         SizedBox(
                           width: 90,
                           child: TextField(
@@ -114,8 +112,6 @@ class _ReceiveStockBottomSheetState extends State<ReceiveStockBottomSheet> {
                                 borderSide: BorderSide.none,
                               ),
                             ),
-
-                            // ✅ Auto-fill on tap — listener above handles button state
                             onTap: () {
                               if (_controllers[c.cylinderType]!.text.isEmpty) {
                                 _controllers[c.cylinderType]!.text = c
@@ -123,7 +119,6 @@ class _ReceiveStockBottomSheetState extends State<ReceiveStockBottomSheet> {
                                     .toString();
                               }
                             },
-
                             onChanged: (val) {
                               final entered = int.tryParse(val) ?? 0;
                               setState(() {
@@ -139,14 +134,14 @@ class _ReceiveStockBottomSheetState extends State<ReceiveStockBottomSheet> {
                 },
               ),
             ),
-
-            // ✅ Fix 2: button stays inside safe area, never hidden by nav bar
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _hasAnyInput && !_hasErrors() ? _submit : null,
+                  onPressed: _hasAnyInput && !_hasErrors() && !_isSubmitting
+                      ? _submit
+                      : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryOrange,
                     disabledBackgroundColor: AppTheme.primaryOrange.withOpacity(
@@ -157,10 +152,22 @@ class _ReceiveStockBottomSheetState extends State<ReceiveStockBottomSheet> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text(
-                    'Confirm Receipt',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          'Confirm Receipt',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -218,30 +225,70 @@ class _ReceiveStockBottomSheetState extends State<ReceiveStockBottomSheet> {
     );
   }
 
-  Future<void> _submit() async {
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const SuccessDialog(),
-    );
-
-    Navigator.pop(context);
-    widget.onSuccess();
-  }
-
+  // ✅ Build payload matching StationInventorySupplyModel exactly
   Map<String, dynamic> _buildPayload() {
-    final items = <Map<String, dynamic>>[];
+    final supplyDetails = <Map<String, dynamic>>[];
 
     for (final c in widget.receive.cylinders) {
-      final text = _controllers[c.cylinderType]!.text.trim();
+      final text = _controllers[c.cylinderType]?.text.trim() ?? '';
       if (text.isNotEmpty) {
         final qty = int.tryParse(text) ?? 0;
         if (qty > 0) {
-          items.add({'cylinderType': c.cylinderType, 'quantity': qty});
+          supplyDetails.add({
+            'SaleDetailID': c.saleDetailId, // ✅ maps to SaleDetailID
+            'LubId': c.cylinderId, // ✅ CylinderID becomes LubId
+            'ReceiveQty': qty,
+            'Price': c.price, // ✅ from sale detail
+          });
         }
       }
     }
 
-    return {'receiveId': widget.receive.saleID, 'items': items};
+    return {
+      'SupplyDate': DateTime.now().toUtc().toIso8601String(),
+      'SaleID': widget.receive.saleID,
+      'StationID': widget.receive.stationID,
+      'AddedBy': 'user',
+      'SupplyDetails': supplyDetails,
+      // StationID and AddedBy injected by backend from auth token ✅
+    };
+  }
+
+  Future<void> _submit() async {
+    setState(() => _isSubmitting = true);
+
+    try {
+      final payload = _buildPayload();
+
+      log('STATUS: ${payload}');
+
+      final result = await ApiService.receiveLpgSupply(payload);
+
+      if (!mounted) return;
+
+      if (result) {
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const SuccessDialog(),
+        );
+        Navigator.pop(context);
+        widget.onSuccess();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to receive stock. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 }

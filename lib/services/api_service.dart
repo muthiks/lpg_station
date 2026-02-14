@@ -45,8 +45,8 @@ class ApiService {
       Uri.parse('$_baseUrl/GetLpgUserStations'),
       headers: _headers,
     );
-    log('STATUS: ${response.statusCode}');
-    log('BODY: ${response.body}');
+    // log('STATUS: ${response.statusCode}');
+    // log('BODY: ${response.body}');
 
     if (response.statusCode == 200) {
       final List<dynamic> data = json.decode(response.body);
@@ -54,6 +54,23 @@ class ApiService {
     } else {
       throw Exception('Failed to load stations');
     }
+  }
+
+  static Future<bool> receiveLpgSupply(Map<String, dynamic> payload) async {
+    final url = Uri.parse('$_baseUrl/ReceiveLpgSupply');
+    final response = await http.post(
+      url,
+      headers: _headers,
+      body: jsonEncode(payload), // Just send the string directly
+    );
+    log('STATUS: ${response.statusCode}');
+    log('BODY: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['IsValid'] == true;
+    }
+    return false;
   }
 
   ///GET Trucks/////
