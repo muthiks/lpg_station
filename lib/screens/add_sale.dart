@@ -24,6 +24,7 @@ class AddSale extends StatefulWidget {
 }
 
 class _AddSaleState extends State<AddSale> {
+  // ── Loading flags ────────────────────────────────────────────────────
   bool _isLoadingStations = true;
   bool _isLoadingCustomers = false;
   bool _isLoadingDeliveryGuys = false;
@@ -31,22 +32,23 @@ class _AddSaleState extends State<AddSale> {
   bool _isSubmitting = false;
   String? _errorMessage;
 
+  // ── Data lists ──────────────────────────────────────────────────────
   List<StationDto> _stations = [];
   List<CustomerDto> _customers = [];
   List<DeliveryGuyDto> _deliveryGuys = [];
-
-  // ── All items ready for AddItemSheet ─────────────────────────────────
-  // This is populated from stock API and passed directly to AddItemSheet
   List<Map<String, dynamic>> _allStockItems = [];
 
+  // ── Selected values ─────────────────────────────────────────────────
   StationDto? _selectedStation;
   CustomerDto? _selectedCustomer;
   String _deliveryType = 'Own Picking';
   DeliveryGuyDto? _selectedDeliveryGuy;
 
+  // ── Sale items ──────────────────────────────────────────────────────
   List<SaleItem> saleItems = [];
   double totalAmount = 0.0;
 
+  // ── Scanner ─────────────────────────────────────────────────────────
   final FocusNode _scannerFocusNode = FocusNode();
   final TextEditingController _scannerController = TextEditingController();
   String _scanBuffer = '';
@@ -55,8 +57,9 @@ class _AddSaleState extends State<AddSale> {
   @override
   void initState() {
     super.initState();
+    // Everything chains from _loadStations so dropdowns are ready before we
+    // try to populate them in edit mode.
     _loadStations();
-    if (widget.isEditMode) _prefillFromSale(widget.editSale!);
   }
 
   @override
@@ -78,11 +81,39 @@ class _AddSaleState extends State<AddSale> {
       setState(() {
         _stations = stations;
         _isLoadingStations = false;
+      });
+
+      if (widget.isEditMode) {
+        // ── EDIT MODE: find the station that matches the sale ────────
+        final sale = widget.editSale!;
+        final match =
+            _stations.where((s) => s.stationID == sale.stationID).firstOrNull
+            // fallback: match by name if stationID not on sale
+            ??
+            _stations
+                .where((s) => s.stationName == sale.stationName)
+                .firstOrNull
+            // last resort for single-station users
+            ??
+            (_stations.length == 1 ? _stations.first : null);
+
+        if (match != null) {
+          setState(() => _selectedStation = match);
+          // Load dependents in parallel then populate dropdowns
+          await Future.wait([
+            _loadCustomersForEdit(match.stationID),
+            _loadDeliveryGuysForEdit(match.stationID),
+            _loadStationStock(match.stationID),
+          ]);
+          _populateEditFields(sale);
+        }
+      } else {
+        // ── ADD MODE: auto-select if single station ──────────────────
         if (_stations.length == 1) {
-          _selectedStation = _stations.first;
+          setState(() => _selectedStation = _stations.first);
           _loadAllForStation(_selectedStation!.stationID);
         }
-      });
+      }
     } catch (e) {
       setState(() {
         _isLoadingStations = false;
@@ -90,6 +121,84 @@ class _AddSaleState extends State<AddSale> {
       });
     }
   }
+
+  // Loads customers without clearing selected (for edit mode)
+  Future<void> _loadCustomersForEdit(int stationId) async {
+    setState(() => _isLoadingCustomers = true);
+    try {
+      final customers = await ApiService.getCustomersByStation(stationId);
+      setState(() {
+        _customers = customers;
+        _isLoadingCustomers = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingCustomers = false);
+      log('Error loading customers: $e');
+    }
+  }
+
+  // Loads delivery guys without clearing selected (for edit mode)
+  Future<void> _loadDeliveryGuysForEdit(int stationId) async {
+    setState(() => _isLoadingDeliveryGuys = true);
+    try {
+      final guys = await ApiService.getStationDeliveryGuys(stationId);
+      setState(() {
+        _deliveryGuys = guys;
+        _isLoadingDeliveryGuys = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingDeliveryGuys = false);
+      log('Error loading delivery guys: $e');
+    }
+  }
+
+  // ── Runs AFTER customers + delivery guys are loaded ──────────────────
+  void _populateEditFields(SaleDto sale) {
+    setState(() {
+      // Delivery type
+      final hasDelivery =
+          sale.deliveryGuy != null &&
+          sale.deliveryGuy!.isNotEmpty &&
+          sale.deliveryGuy != 'N/A';
+      _deliveryType = hasDelivery ? 'Delivery' : 'Own Picking';
+
+      // Customer — match by ID (most reliable)
+      _selectedCustomer = _customers
+          .where((c) => c.customerID == sale.customerID)
+          .firstOrNull;
+
+      // Delivery guy — match by full name, fallback to id
+      if (hasDelivery) {
+        _selectedDeliveryGuy = _deliveryGuys
+            .where(
+              (g) => g.fullName == sale.deliveryGuy || g.id == sale.deliveryGuy,
+            )
+            .firstOrNull;
+      }
+
+      // Sale items from saleDetails
+      saleItems = sale.saleDetails
+          .map(
+            (d) => SaleItem(
+              cylinderTypeId: d.cylinderID,
+              cylinderTypeName: d.lubName,
+              quantity: d.quantity,
+              price: d.price,
+              amount: d.amount,
+              cylinderPrice: d.cylinderPrice,
+              cylinderAmount: d.cylinderAmount,
+              cylinderStatus: d.cylStatus,
+              priceType: d.priceType,
+              isTagged: false,
+              taggedBarcodes: [],
+            ),
+          )
+          .toList();
+    });
+    _calculateTotals();
+  }
+
+  // ── Add mode helpers ─────────────────────────────────────────────────
 
   void _loadAllForStation(int stationId) {
     _loadCustomers(stationId);
@@ -100,6 +209,7 @@ class _AddSaleState extends State<AddSale> {
   Future<void> _loadCustomers(int stationId) async {
     setState(() {
       _isLoadingCustomers = true;
+      _selectedCustomer = null;
     });
     try {
       final customers = await ApiService.getCustomersByStation(stationId);
@@ -117,7 +227,7 @@ class _AddSaleState extends State<AddSale> {
   Future<void> _loadDeliveryGuys(int stationId) async {
     setState(() {
       _isLoadingDeliveryGuys = true;
-      if (!widget.isEditMode) _selectedDeliveryGuy = null;
+      _selectedDeliveryGuy = null;
     });
     try {
       final guys = await ApiService.getStationDeliveryGuys(stationId);
@@ -138,20 +248,10 @@ class _AddSaleState extends State<AddSale> {
     });
     try {
       final stock = await ApiService.getStationStock(stationId);
-
-      // ── FIX: use allItemsForSheet which handles PascalCase correctly ──
       final items = stock.allItemsForSheet;
-
       log(
-        'Stock loaded: ${stock.cylinders.length} cylinders, ${stock.accessories.length} accessories',
+        'Stock: ${stock.cylinders.length} cylinders, ${stock.accessories.length} accessories → ${items.length} total',
       );
-      log('Total items for sheet: ${items.length}');
-      for (final item in items) {
-        log(
-          '  Item: ${item['name']} (lubId=${item['lubId']}, price=${item['price']}, isAccessory=${item['isAccessory']})',
-        );
-      }
-
       setState(() {
         _allStockItems = items;
         _isLoadingStock = false;
@@ -161,33 +261,6 @@ class _AddSaleState extends State<AddSale> {
       log('Error loading stock: $e');
       _showSnack('Failed to load stock items', isError: true);
     }
-  }
-
-  void _prefillFromSale(SaleDto sale) {
-    _deliveryType =
-        (sale.deliveryGuy != null &&
-            sale.deliveryGuy!.isNotEmpty &&
-            sale.deliveryGuy != 'N/A')
-        ? 'Delivery'
-        : 'Own Picking';
-    saleItems = sale.saleDetails
-        .map(
-          (d) => SaleItem(
-            cylinderTypeId: d.cylinderID,
-            cylinderTypeName: d.lubName,
-            quantity: d.quantity,
-            price: d.price,
-            amount: d.amount,
-            cylinderPrice: d.cylinderPrice,
-            cylinderAmount: d.cylinderAmount,
-            cylinderStatus: d.cylStatus,
-            priceType: d.priceType,
-            isTagged: false,
-            taggedBarcodes: [],
-          ),
-        )
-        .toList();
-    _calculateTotals();
   }
 
   // ════════════════════════════ STATION SELECTOR ═══════════════════════
@@ -201,12 +274,8 @@ class _AddSaleState extends State<AddSale> {
       backgroundColor: Colors.transparent,
       builder: (_) => StatefulBuilder(
         builder: (ctx, setModal) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.65,
-            decoration: BoxDecoration(
-              color: AppTheme.primaryBlue,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
+          return _sheet(
+            height: 0.65,
             child: Column(
               children: [
                 _sheetHeader('Select Station', Icons.warehouse, ctx),
@@ -278,12 +347,8 @@ class _AddSaleState extends State<AddSale> {
       backgroundColor: Colors.transparent,
       builder: (_) => StatefulBuilder(
         builder: (ctx, setModal) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.7,
-            decoration: BoxDecoration(
-              color: AppTheme.primaryBlue,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
+          return _sheet(
+            height: 0.75,
             child: Column(
               children: [
                 _sheetHeader('Select Customer', Icons.person, ctx),
@@ -313,7 +378,7 @@ class _AddSaleState extends State<AddSale> {
                         isSelected: sel,
                         subtitle: c.customerPhone,
                         trailing: c.hasBalance
-                            ? 'Bal: KSh ${c.balance.toStringAsFixed(0)}'
+                            ? 'KSh ${c.balance.toStringAsFixed(0)}'
                             : null,
                         onTap: () {
                           setState(() => _selectedCustomer = c);
@@ -344,7 +409,6 @@ class _AddSaleState extends State<AddSale> {
     }
     if (_allStockItems.isEmpty) {
       _showSnack('No stock items found. Try refreshing.', isError: true);
-      log('⚠️ _allStockItems is empty — stock may not have loaded');
       return;
     }
     showModalBottomSheet(
@@ -353,12 +417,10 @@ class _AddSaleState extends State<AddSale> {
       backgroundColor: Colors.transparent,
       builder: (_) => AddItemSheet(
         cylinderTypes: _allStockItems,
-        onItemAdded: (item) {
-          setState(() {
-            saleItems.add(item);
-            _calculateTotals();
-          });
-        },
+        onItemAdded: (item) => setState(() {
+          saleItems.add(item);
+          _calculateTotals();
+        }),
       ),
     );
   }
@@ -371,12 +433,10 @@ class _AddSaleState extends State<AddSale> {
       builder: (_) => AddItemSheet(
         cylinderTypes: _allStockItems,
         existingItem: saleItems[index],
-        onItemAdded: (updated) {
-          setState(() {
-            saleItems[index] = updated;
-            _calculateTotals();
-          });
-        },
+        onItemAdded: (updated) => setState(() {
+          saleItems[index] = updated;
+          _calculateTotals();
+        }),
       ),
     );
   }
@@ -426,11 +486,11 @@ class _AddSaleState extends State<AddSale> {
             Text('Barcode: $barcode'),
             const SizedBox(height: 16),
             ...cylinders.map(
-              (type) => ListTile(
-                title: Text(type['name']),
+              (t) => ListTile(
+                title: Text(t['name']),
                 onTap: () {
                   Navigator.pop(context);
-                  _addScannedCylinder(barcode, type);
+                  _addScannedCylinder(barcode, t);
                 },
               ),
             ),
@@ -513,7 +573,7 @@ class _AddSaleState extends State<AddSale> {
       return;
     }
     if (saleItems.any((i) => i.isTagged && i.taggedBarcodes.isEmpty)) {
-      _showSnack('Tagged items must have scanned cylinders', isError: true);
+      _showSnack('Tagged items must have barcodes', isError: true);
       return;
     }
 
@@ -544,13 +604,14 @@ class _AddSaleState extends State<AddSale> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingStations)
+    if (_isLoadingStations) {
       return _scaffold(
         child: Center(
-          child: CircularProgressIndicator(color: AppTheme.primaryBlue),
+          child: CircularProgressIndicator(color: AppTheme.primaryOrange),
         ),
       );
-    if (_errorMessage != null)
+    }
+    if (_errorMessage != null) {
       return _scaffold(
         child: Center(
           child: Column(
@@ -562,16 +623,19 @@ class _AddSaleState extends State<AddSale> {
                 size: 48,
               ),
               const SizedBox(height: 16),
-              Text(
-                _errorMessage!,
-                style: const TextStyle(color: Colors.white70),
-                textAlign: TextAlign.center,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(color: Colors.white70),
+                  textAlign: TextAlign.center,
+                ),
               ),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: _loadStations,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryBlue,
+                  backgroundColor: AppTheme.primaryOrange,
                 ),
                 child: const Text('Retry'),
               ),
@@ -579,42 +643,49 @@ class _AddSaleState extends State<AddSale> {
           ),
         ),
       );
+    }
     return _scaffold(child: _buildForm());
   }
+
+  // ─────────────────── Scaffold wrapper (shared header) ────────────────
 
   Widget _scaffold({required Widget child}) {
     return Stack(
       children: [
         Column(
           children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(4, 2, 16, 2),
+            // ── Page title row (matches screenshot: ⊕ icon + title) ──────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 16, 6),
               child: Row(
                 children: [
                   IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                     icon: const Icon(
                       Icons.arrow_circle_left,
                       color: Colors.white,
+                      size: 22,
                     ),
-                    onPressed: widget.onBack,
+                    onPressed: null,
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 8),
                   Text(
                     widget.isEditMode ? 'Edit Sale' : 'Add New Sale',
                     style: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
                   ),
                   const Spacer(),
                   if (_isLoadingStock)
-                    SizedBox(
+                    const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: AppTheme.primaryOrange,
+                        color: Colors.white70,
                       ),
                     ),
                 ],
@@ -623,6 +694,7 @@ class _AddSaleState extends State<AddSale> {
             Expanded(child: child),
           ],
         ),
+        // Hidden scanner field
         SizedBox(
           height: 0,
           width: 0,
@@ -640,6 +712,8 @@ class _AddSaleState extends State<AddSale> {
     );
   }
 
+  // ─────────────────── Form body ───────────────────────────────────────
+
   Widget _buildForm() {
     return Column(
       children: [
@@ -649,40 +723,46 @@ class _AddSaleState extends State<AddSale> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Station
-                _label('Station'),
+                // ── Station ───────────────────────────────────────────────
+                _sectionLabel('Station'),
                 const SizedBox(height: 4),
                 _stations.length == 1
-                    ? _singleStationDisplay()
+                    ? _autoField(
+                        Icons.warehouse,
+                        _selectedStation?.stationName ?? '',
+                      )
                     : _tapField(
                         icon: Icons.warehouse,
                         value: _selectedStation?.stationName,
                         placeholder: 'Select Station',
                         onTap: _showStationSelector,
                       ),
-                const SizedBox(height: 10),
 
-                // Customer
-                _label('Customer'),
-                const SizedBox(height: 4),
-                _tapField(
-                  icon: Icons.person,
-                  value: _selectedCustomer?.customerName,
-                  placeholder: _selectedStation == null
-                      ? 'Select station first'
-                      : 'Select Customer',
-                  isLoading: _isLoadingCustomers,
-                  isDisabled: _selectedStation == null,
-                  onTap: _selectedStation == null
-                      ? null
-                      : _showCustomerSelector,
-                ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
 
-                // Delivery Type
-                _label('Delivery Type'),
+                // ── Customer ──────────────────────────────────────────────
+                _sectionLabel('Customer'),
                 const SizedBox(height: 4),
-                _whiteDropdown<String>(
+                _isLoadingCustomers
+                    ? _loadingField('Loading customers...')
+                    : _tapField(
+                        icon: Icons.person,
+                        value: _selectedCustomer?.customerName,
+                        placeholder: _selectedStation == null
+                            ? 'Select station first'
+                            : 'Select Customer',
+                        isDisabled: _selectedStation == null,
+                        onTap: _selectedStation == null
+                            ? null
+                            : _showCustomerSelector,
+                      ),
+
+                const SizedBox(height: 12),
+
+                // ── Delivery Type ─────────────────────────────────────────
+                _sectionLabel('Delivery Type'),
+                const SizedBox(height: 4),
+                _styledDropdown<String>(
                   icon: Icons.local_shipping,
                   value: _deliveryType,
                   items: const ['Own Picking', 'Delivery'],
@@ -694,18 +774,18 @@ class _AddSaleState extends State<AddSale> {
                   }),
                 ),
 
-                // Delivery Guy
+                // ── Delivery Guy ──────────────────────────────────────────
                 if (_deliveryType == 'Delivery') ...[
-                  const SizedBox(height: 10),
-                  _label('Delivery Guy'),
+                  const SizedBox(height: 12),
+                  _sectionLabel('Delivery Guy'),
                   const SizedBox(height: 4),
                   _isLoadingDeliveryGuys
                       ? _loadingField('Loading delivery guys...')
-                      : _whiteDropdown<DeliveryGuyDto>(
+                      : _styledDropdown<DeliveryGuyDto>(
                           icon: Icons.person_pin,
                           value: _selectedDeliveryGuy,
                           hint: _deliveryGuys.isEmpty
-                              ? 'No delivery guys'
+                              ? 'No delivery guys available'
                               : 'Select Delivery Guy',
                           items: _deliveryGuys,
                           labelOf: (v) => v.fullName,
@@ -717,45 +797,57 @@ class _AddSaleState extends State<AddSale> {
 
                 const SizedBox(height: 16),
 
-                // Items header
+                // ── Items header ──────────────────────────────────────────
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Items',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                    TextButton.icon(
-                      onPressed: _addSaleItem,
-                      icon: const Icon(Icons.add_circle, color: Colors.white),
-                      label: Text(
-                        _isLoadingStock ? 'Loading...' : 'Add Item',
-                        style: const TextStyle(color: Colors.white),
+                    _sectionLabel('Items'),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: _addSaleItem,
+                      child: Row(
+                        children: [
+                          Icon(
+                            _isLoadingStock
+                                ? Icons.hourglass_empty
+                                : Icons.add_circle_outline,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _isLoadingStock ? 'Loading...' : 'Add Item',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
 
                 if (saleItems.any((i) => i.isTagged)) ...[
+                  const SizedBox(height: 10),
                   ScannerToggle(
                     isScanning: _isScanning,
                     onToggle: _toggleScanning,
                   ),
-                  const SizedBox(height: 12),
                 ],
 
-                // Items list
+                const SizedBox(height: 10),
+
+                // ── Items list ────────────────────────────────────────────
                 if (saleItems.isEmpty)
                   Container(
                     padding: const EdgeInsets.all(32),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.05),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white24),
+                      border: Border.all(
+                        color: AppTheme.primaryOrange.withOpacity(0.3),
+                      ),
                     ),
                     child: Center(
                       child: Column(
@@ -769,7 +861,8 @@ class _AddSaleState extends State<AddSale> {
                           Text(
                             'No items added yet',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.7),
+                              color: Colors.white.withOpacity(0.6),
+                              fontSize: 13,
                             ),
                           ),
                         ],
@@ -781,7 +874,7 @@ class _AddSaleState extends State<AddSale> {
                     final idx = e.key;
                     final item = e.value;
                     return Dismissible(
-                      key: Key('item_$idx'),
+                      key: Key('item_${idx}_${item.cylinderTypeId}'),
                       direction: DismissDirection.endToStart,
                       onDismissed: (_) => setState(() {
                         saleItems.removeAt(idx);
@@ -790,6 +883,7 @@ class _AddSaleState extends State<AddSale> {
                       background: Container(
                         alignment: Alignment.centerRight,
                         padding: const EdgeInsets.only(right: 20),
+                        margin: const EdgeInsets.only(bottom: 8),
                         decoration: BoxDecoration(
                           color: Colors.red,
                           borderRadius: BorderRadius.circular(12),
@@ -797,7 +891,7 @@ class _AddSaleState extends State<AddSale> {
                         child: const Icon(
                           Icons.delete,
                           color: Colors.white,
-                          size: 32,
+                          size: 28,
                         ),
                       ),
                       child: GestureDetector(
@@ -824,25 +918,28 @@ class _AddSaleState extends State<AddSale> {
                   }),
 
                 if (saleItems.isNotEmpty) ...[
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   Container(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryOrange.withOpacity(0.2),
+                      color: Colors.black.withOpacity(0.25),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: AppTheme.primaryOrange,
-                        width: 2,
+                        width: 1.5,
                       ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          'Total Amount:',
+                        const Text(
+                          'Total Amount',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 18,
+                            fontSize: 15,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -850,7 +947,7 @@ class _AddSaleState extends State<AddSale> {
                           'KSh ${NumberFormat('#,##0').format(totalAmount)}',
                           style: TextStyle(
                             color: AppTheme.primaryOrange,
-                            fontSize: 24,
+                            fontSize: 20,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -858,24 +955,30 @@ class _AddSaleState extends State<AddSale> {
                     ),
                   ),
                 ],
+
+                const SizedBox(height: 16),
               ],
             ),
           ),
         ),
 
-        // Submit button
-        Container(
-          padding: const EdgeInsets.all(16),
+        // ── Submit Button ─────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: SizedBox(
             width: double.infinity,
             child: ElevatedButton(
               onPressed: _isSubmitting ? null : _saveSale,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryOrange,
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                disabledBackgroundColor: AppTheme.primaryOrange.withOpacity(
+                  0.5,
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
+                elevation: 3,
               ),
               child: _isSubmitting
                   ? const SizedBox(
@@ -903,78 +1006,69 @@ class _AddSaleState extends State<AddSale> {
 
   // ════════════════════════════ UI HELPERS ═════════════════════════════
 
-  Widget _label(String text) => Text(
-    text,
-    style: const TextStyle(
-      color: Colors.white,
-      fontWeight: FontWeight.bold,
-      fontSize: 12,
-    ),
-  );
+  Widget _sectionLabel(String text, [IconData? icon]) {
+    return Text(
+      text,
+      style: const TextStyle(
+        color: Colors.white,
+        fontWeight: FontWeight.w600,
+        fontSize: 13,
+      ),
+    );
+  }
 
+  /// White tap-to-open field (station, customer) — original design
   Widget _tapField({
     required IconData icon,
     required String? value,
     required String placeholder,
     VoidCallback? onTap,
-    bool isLoading = false,
     bool isDisabled = false,
   }) {
-    return InkWell(
-      onTap: isDisabled || isLoading ? null : onTap,
+    return GestureDetector(
+      onTap: isDisabled ? null : onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
-          color: isDisabled ? Colors.grey.shade300 : Colors.white,
-          borderRadius: BorderRadius.circular(8),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 4,
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 6,
               offset: const Offset(0, 2),
             ),
           ],
         ),
         child: Row(
           children: [
-            Icon(
-              icon,
-              color: isDisabled ? Colors.grey.shade600 : AppTheme.primaryOrange,
-              size: 18,
-            ),
-            const SizedBox(width: 8),
+            Icon(icon, color: AppTheme.primaryOrange, size: 20),
+            const SizedBox(width: 12),
             Expanded(
-              child: isLoading
-                  ? const Text(
-                      'Loading...',
-                      style: TextStyle(color: Colors.grey, fontSize: 13),
-                    )
-                  : Text(
-                      value ?? placeholder,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDisabled
-                            ? Colors.grey.shade600
-                            : (value != null
-                                  ? Colors.black87
-                                  : Colors.grey[600]),
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-            ),
-            if (!isLoading && !isDisabled)
-              Icon(
-                Icons.arrow_drop_down,
-                color: AppTheme.primaryBlue,
-                size: 22,
+              child: Text(
+                value ?? placeholder,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: value != null
+                      ? Colors.black87
+                      : const Color(0xFF757575),
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
+            ),
+            const Icon(
+              Icons.keyboard_arrow_down,
+              color: Color(0xFF757575),
+              size: 22,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _whiteDropdown<T>({
+  /// Dropdown — same white card style as screenshot
+  Widget _styledDropdown<T>({
     required IconData icon,
     required T? value,
     String? hint,
@@ -984,69 +1078,94 @@ class _AddSaleState extends State<AddSale> {
     bool isDisabled = false,
   }) {
     return Container(
+      padding: const EdgeInsets.fromLTRB(14, 2, 14, 2),
       decoration: BoxDecoration(
-        color: isDisabled ? Colors.grey.shade300 : Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 4,
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 6,
             offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: DropdownButtonFormField<T>(
-        initialValue: value,
-        decoration: InputDecoration(
-          prefixIcon: Icon(icon, color: AppTheme.primaryOrange, size: 18),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide.none,
-          ),
-          filled: true,
-          fillColor: isDisabled ? Colors.grey.shade300 : Colors.white,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 6,
-          ),
-          isDense: true,
-        ),
-        style: const TextStyle(fontSize: 13, color: Colors.black87),
-        hint: hint != null
-            ? Text(hint, style: const TextStyle(fontSize: 13))
-            : null,
-        isExpanded: true,
-        items: items
-            .map(
-              (t) => DropdownMenuItem<T>(
-                value: t,
-                child: Text(labelOf(t), style: const TextStyle(fontSize: 13)),
+      child: Row(
+        children: [
+          Icon(icon, color: AppTheme.primaryOrange, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<T>(
+                value: value,
+                isExpanded: true,
+                isDense: false,
+                dropdownColor: Colors.white,
+                style: const TextStyle(fontSize: 14, color: Colors.black87),
+                icon: const Icon(
+                  Icons.keyboard_arrow_down,
+                  color: Color(0xFF757575),
+                  size: 22,
+                ),
+                hint: hint != null
+                    ? Text(
+                        hint,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF757575),
+                        ),
+                      )
+                    : null,
+                items: isDisabled
+                    ? null
+                    : items
+                          .map(
+                            (t) => DropdownMenuItem<T>(
+                              value: t,
+                              child: Text(
+                                labelOf(t),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                onChanged: isDisabled ? null : onChanged,
               ),
-            )
-            .toList(),
-        onChanged: isDisabled ? null : onChanged,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _singleStationDisplay() {
+  /// Auto-selected field badge — white card matching other fields
+  Widget _autoField(IconData icon, String value) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
-        color: AppTheme.primaryBlue.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.primaryBlue.withOpacity(0.3)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          Icon(Icons.warehouse, color: AppTheme.primaryBlue, size: 18),
-          const SizedBox(width: 8),
+          Icon(icon, color: AppTheme.primaryOrange, size: 20),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
-              _selectedStation?.stationName ?? '',
+              value,
               style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
+                color: Colors.black87,
+                fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1054,14 +1173,14 @@ class _AddSaleState extends State<AddSale> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.2),
+              color: Colors.green.withOpacity(0.15),
               borderRadius: BorderRadius.circular(4),
             ),
             child: const Text(
               'AUTO',
               style: TextStyle(
                 color: Colors.green,
-                fontSize: 9,
+                fontSize: 10,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -1071,12 +1190,20 @@ class _AddSaleState extends State<AddSale> {
     );
   }
 
+  /// Loading field — white card matching other fields
   Widget _loadingField(String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.grey.shade300,
-        borderRadius: BorderRadius.circular(8),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -1085,13 +1212,13 @@ class _AddSaleState extends State<AddSale> {
             height: 18,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: AppTheme.primaryBlue,
+              color: AppTheme.primaryOrange,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           Text(
             label,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            style: const TextStyle(color: Color(0xFF757575), fontSize: 14),
           ),
         ],
       ),
@@ -1099,6 +1226,17 @@ class _AddSaleState extends State<AddSale> {
   }
 
   // ════════════════════════════ SHEET HELPERS ══════════════════════════
+
+  Widget _sheet({required double height, required Widget child}) {
+    return Container(
+      height: MediaQuery.of(context).size.height * height,
+      decoration: BoxDecoration(
+        color: AppTheme.primaryBlue,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: child,
+    );
+  }
 
   Widget _sheetHeader(String title, IconData icon, BuildContext ctx) {
     return Container(

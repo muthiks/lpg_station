@@ -92,6 +92,7 @@ class SaleDto {
   final int stationID;
   final String customerName;
   final String? customerPhone;
+  final String? stationName;
   final String invoiceNo;
   final String? deliveryGuy;
   final String? dispatcher;
@@ -113,6 +114,7 @@ class SaleDto {
     required this.stationID,
     required this.customerName,
     this.customerPhone,
+    this.stationName,
     required this.invoiceNo,
     this.deliveryGuy,
     this.dispatcher,
@@ -154,6 +156,7 @@ class SaleDto {
       customerName:
           _get(json, 'CustomerName', 'customerName')?.toString() ?? '',
       customerPhone: _get(json, 'CustomerPhone', 'customerPhone')?.toString(),
+      stationName: _get(json, 'StationName', 'stationName')?.toString(),
       invoiceNo: _get(json, 'InvoiceNo', 'invoiceNo')?.toString() ?? '',
       deliveryGuy: _get(json, 'DeliveryGuy', 'deliveryGuy')?.toString(),
       dispatcher: _get(json, 'Dispatcher', 'dispatcher')?.toString(),

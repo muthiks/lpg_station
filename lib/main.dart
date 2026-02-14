@@ -24,7 +24,7 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  HttpOverrides.global = MyHttpOverrides();
+  // HttpOverrides.global = MyHttpOverrides();
   runApp(const MyApp());
 }
 
@@ -79,7 +79,7 @@ class _MainLayoutState extends State<MainLayout> {
 
     // Get user role
     final userRole = AuthService.instance.userRole;
-    log('ROLE: $userRole');
+    // log('ROLE: $userRole');
 
     // Get accessible page indices for this role
     accessibleIndices = RoleConfig.getAccessiblePages(userRole);
