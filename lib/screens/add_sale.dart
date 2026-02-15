@@ -669,27 +669,40 @@ class _AddSaleState extends State<AddSale> {
         'Total': totalAmount,
         'Balance': totalAmount,
 
-        // Detail lines — cylinders only (accessories not in C# model yet)
-        'SaleDetails': saleItems
-            .where((item) => item.cylinderTypeName != 'Accessory Only')
-            .map(
-              (item) => {
-                'CylinderID': item.cylinderTypeId,
-                'Quantity': item.quantity,
-                'Status': item.cylinderStatus,
-                'PriceType': item.priceType,
-                'Price': item.price,
-                'Amount': item.amount,
-                'CylinderPrice': item.cylinderPrice,
-                'CylinderAmount': item.cylinderAmount,
-                // Capacity must be int — API model uses int not double
-                'Capacity': _getCapacity(
-                  item.cylinderTypeId,
-                  knownCapacity: item.capacity,
-                ).toInt(),
-              },
-            )
-            .toList(),
+        // Detail lines — cylinders AND accessories
+        // Accessories are sent with IsAccessory:true so the API handles them separately
+        'SaleDetails': saleItems.map((item) {
+          if (item.cylinderTypeName == 'Accessory Only') {
+            // Accessory line — LubId comes from accessoryId (stored as String)
+            return {
+              'CylinderID': int.tryParse(item.accessoryId ?? '0') ?? 0,
+              'Quantity': item.accessoryQuantity ?? 1,
+              'Status': 'Accessory',
+              'PriceType': item.accessoryPriceType ?? 'Custom',
+              'Price': item.accessoryPrice ?? 0.0,
+              'Amount': item.accessoryAmount ?? 0.0,
+              'CylinderPrice': 0.0,
+              'CylinderAmount': 0.0,
+              'Capacity': 0,
+              'IsAccessory': true,
+            };
+          }
+          return {
+            'CylinderID': item.cylinderTypeId,
+            'Quantity': item.quantity,
+            'Status': item.cylinderStatus,
+            'PriceType': item.priceType,
+            'Price': item.price,
+            'Amount': item.amount,
+            'CylinderPrice': item.cylinderPrice,
+            'CylinderAmount': item.cylinderAmount,
+            'Capacity': _getCapacity(
+              item.cylinderTypeId,
+              knownCapacity: item.capacity,
+            ).toInt(),
+            'IsAccessory': false,
+          };
+        }).toList(),
       };
 
       // [FromBody] reads the body directly — no wrapper key needed

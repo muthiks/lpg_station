@@ -143,7 +143,7 @@ class ApiService {
 
   // Update sale status (Draft → Confirmed → Dispatched → Delivered)
   static Future<void> updateSaleStatus(int saleId, String newStatus) async {
-    final response = await http.get(
+    final response = await http.patch(
       Uri.parse('$_baseUrl/UpdateSaleStatus?saleId=$saleId&status=$newStatus'),
       headers: _headers,
     );
@@ -170,9 +170,7 @@ class ApiService {
   }
 
   // Create a new sale
-  static Future<Map<String, dynamic>> createSale(
-    Map<String, dynamic> data,
-  ) async {
+  static Future<void> createSale(Map<String, dynamic> data) async {
     try {
       final url = Uri.parse('$_baseUrl/PostLpgSale');
 
@@ -182,10 +180,20 @@ class ApiService {
         body: jsonEncode(data), // Just send the string directly
       );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
+      log('createSale status: ${response.statusCode} body: ${response.body}');
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception('Failed to create sale: ${response.body}');
       }
-      throw Exception('Failed to create sale: ${response.body}');
+      // ResponseObject: IsValid:false = business rule failure (e.g. insufficient stock)
+      final result = json.decode(response.body) as Map<String, dynamic>;
+      final isValid = result['isValid'] ?? result['IsValid'] ?? true;
+      if (isValid == false) {
+        final msg =
+            result['message'] ??
+            result['Message'] ??
+            'Sale could not be created';
+        throw Exception(msg);
+      }
     } catch (e) {
       log('Error creating sale: $e');
       rethrow;
@@ -193,23 +201,34 @@ class ApiService {
   }
 
   // Update an existing sale
-  static Future<Map<String, dynamic>> updateSale(
-    Map<String, dynamic> payload,
-  ) async {
-    final id = payload['LpgSaleID'];
-    final url = Uri.parse('$_baseUrl/UpdateLpgSale');
-    final response = await http.put(
-      url,
-      headers: _headers,
-      body: jsonEncode(payload), // Just send the string directly
-    );
+  static Future<void> updateSale(Map<String, dynamic> payload) async {
+    try {
+      final url = Uri.parse('$_baseUrl/UpdateLpgSale');
+      final response = await http.put(
+        url,
+        headers: _headers,
+        body: jsonEncode(payload), // Just send the string directly
+      );
 
-    if (response.statusCode == 200 || response.statusCode == 204) {
-      if (response.body.isEmpty) return {'success': true};
-      return jsonDecode(response.body) as Map<String, dynamic>;
+      log('updateSale status: ${response.statusCode} body: ${response.body}');
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        throw Exception('Failed to update sale: ${response.body}');
+      }
+      // ResponseObject: IsValid:false = business rule failure (e.g. insufficient stock)
+      if (response.body.isNotEmpty) {
+        final result = json.decode(response.body) as Map<String, dynamic>;
+        final isValid = result['isValid'] ?? result['IsValid'] ?? true;
+        if (isValid == false) {
+          final msg =
+              result['message'] ??
+              result['Message'] ??
+              'Sale could not be updated';
+          throw Exception(msg);
+        }
+      }
+    } catch (e) {
+      log('Error updating sale: $e');
+      rethrow;
     }
-    throw Exception(
-      'updateSale failed ${response.statusCode}: ${response.body}',
-    );
   }
 }

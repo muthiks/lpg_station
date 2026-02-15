@@ -370,6 +370,7 @@ class CylinderTypeDto {
     'name': cylinderName,
     'price': retailPrice,
     'cylinderPrice': cylinderCost,
+    'capacity': items.isNotEmpty ? items.first.capacity : 0.0,
     'isAccessory': false,
   };
 }
