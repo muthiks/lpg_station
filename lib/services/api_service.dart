@@ -197,7 +197,7 @@ class ApiService {
     Map<String, dynamic> payload,
   ) async {
     final id = payload['LpgSaleID'];
-    final url = Uri.parse('$_baseUrl/UpdateSale/$id');
+    final url = Uri.parse('$_baseUrl/UpdateLpgSale');
     final response = await http.put(
       url,
       headers: _headers,

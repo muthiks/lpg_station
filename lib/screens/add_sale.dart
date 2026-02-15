@@ -406,6 +406,10 @@ class _AddSaleState extends State<AddSale> {
     final accessories = _allStockItems
         .where((i) => i['isAccessory'] == true)
         .toList();
+    // Accumulate items from the sheet then apply in one setState
+    // Avoids the race where two rapid onItemAdded calls both capture
+    // the same pre-flush saleItems list and the first item gets lost
+    final pending = <SaleItem>[];
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -413,12 +417,16 @@ class _AddSaleState extends State<AddSale> {
       builder: (_) => AddItemSheet(
         cylinderTypes: cylinders,
         accessories: accessories,
-        onItemAdded: (item) => setState(() {
-          saleItems.add(item);
-          _calculateTotals();
-        }),
+        onItemAdded: (item) => pending.add(item),
       ),
-    );
+    ).then((_) {
+      if (pending.isNotEmpty && mounted) {
+        setState(() {
+          saleItems = [...saleItems, ...pending];
+          _calculateTotals();
+        });
+      }
+    });
   }
 
   void _editSaleItem(int index) {
@@ -428,6 +436,7 @@ class _AddSaleState extends State<AddSale> {
     final accessories = _allStockItems
         .where((i) => i['isAccessory'] == true)
         .toList();
+    final pending = <SaleItem>[];
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -436,12 +445,21 @@ class _AddSaleState extends State<AddSale> {
         cylinderTypes: cylinders,
         accessories: accessories,
         existingItem: saleItems[index],
-        onItemAdded: (updated) => setState(() {
-          saleItems[index] = updated;
-          _calculateTotals();
-        }),
+        onItemAdded: (item) => pending.add(item),
       ),
-    );
+    ).then((_) {
+      if (pending.isNotEmpty && mounted) {
+        setState(() {
+          // Replace the tapped item with the first result,
+          // append any additional items (e.g. accessory added alongside)
+          final updated = List<SaleItem>.from(saleItems);
+          updated[index] = pending.first;
+          if (pending.length > 1) updated.addAll(pending.skip(1));
+          saleItems = updated;
+          _calculateTotals();
+        });
+      }
+    });
   }
 
   // ── CHANGE 2: Swipe-to-delete with confirmation dialog ───────────────
@@ -482,7 +500,7 @@ class _AddSaleState extends State<AddSale> {
     );
     if (confirmed == true) {
       setState(() {
-        saleItems.removeAt(index);
+        saleItems = List<SaleItem>.from(saleItems)..removeAt(index);
         _calculateTotals();
       });
       return true;
@@ -559,7 +577,8 @@ class _AddSaleState extends State<AddSale> {
         saleItems[idx].quantity = saleItems[idx].taggedBarcodes.length;
         saleItems[idx].amount = saleItems[idx].price * saleItems[idx].quantity;
       } else {
-        saleItems.add(
+        saleItems = [
+          ...saleItems,
           SaleItem(
             cylinderTypeId: type['id'],
             cylinderTypeName: type['name'],
@@ -573,7 +592,7 @@ class _AddSaleState extends State<AddSale> {
             isTagged: true,
             taggedBarcodes: [barcode],
           ),
-        );
+        ];
       }
       _calculateTotals();
     });
@@ -1006,7 +1025,9 @@ class _AddSaleState extends State<AddSale> {
                     final idx = e.key;
                     final item = e.value;
                     return Dismissible(
-                      key: Key('item_${idx}_${item.cylinderTypeId}'),
+                      key: Key(
+                        'item_${idx}_${item.cylinderTypeId}_${item.cylinderStatus}_${item.price}_${item.accessoryId ?? 'none'}',
+                      ),
                       direction: DismissDirection.endToStart,
                       // confirmDismiss handles removal itself — always return false
                       // so Dismissible never auto-removes the widget
