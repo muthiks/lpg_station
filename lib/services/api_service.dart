@@ -143,13 +143,32 @@ class ApiService {
 
   // Update sale status (Draft → Confirmed → Dispatched → Delivered)
   static Future<void> updateSaleStatus(int saleId, String newStatus) async {
-    final response = await http.patch(
-      Uri.parse('$_baseUrl/UpdateSaleStatus?saleId=$saleId&status=$newStatus'),
-      headers: _headers,
-    );
+    try {
+      final response = await http.patch(
+        Uri.parse(
+          '$_baseUrl/UpdateSaleStatus?saleId=$saleId&status=$newStatus',
+        ),
+        headers: _headers,
+      );
 
-    if (response.statusCode != 200) {
-      throw Exception('Failed to update status: ${response.body}');
+      log('updateSaleStatus: ${response.statusCode} body: ${response.body}');
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to update status: \${response.body}');
+      }
+
+      // Parse ResponseObject — IsValid:false means a business rule blocked the change
+      // e.g. "Cannot skip stages" or "Sale not found"
+      final result = json.decode(response.body) as Map<String, dynamic>;
+      final isValid = result['isValid'] ?? result['IsValid'] ?? true;
+      if (isValid == false) {
+        final msg =
+            result['message'] ?? result['Message'] ?? 'Status update failed';
+        throw Exception(msg);
+      }
+    } catch (e) {
+      log('Error updating sale status: $e');
+      rethrow;
     }
   }
 
