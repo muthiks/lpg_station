@@ -996,7 +996,7 @@ class _AddSaleState extends State<AddSale> {
         ],
       ),
       child: DropdownButtonFormField<T>(
-        value: value,
+        initialValue: value,
         decoration: InputDecoration(
           prefixIcon: Icon(icon, color: AppTheme.primaryOrange, size: 18),
           border: OutlineInputBorder(
