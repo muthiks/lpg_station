@@ -4,15 +4,23 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lpg_station/models/sale_model.dart';
-import 'package:lpg_station/screens/add_sale.dart';
 import 'package:lpg_station/services/api_service.dart';
 import 'package:lpg_station/theme/theme.dart';
+import 'package:lpg_station/widget/dispatch_sheet.dart';
 
 class SaleList extends StatefulWidget {
   final VoidCallback? onNavigateToAdd;
+  // onEditSale: called with the sale to edit — parent swaps the view
+  // same pattern as onNavigateToAdd so bottom nav stays visible
+  final void Function(SaleDto sale)? onEditSale;
   final String userRole;
 
-  const SaleList({super.key, this.onNavigateToAdd, this.userRole = 'Manager'});
+  const SaleList({
+    super.key,
+    this.onNavigateToAdd,
+    this.onEditSale,
+    this.userRole = 'Manager',
+  });
 
   @override
   State<SaleList> createState() => _SaleListState();
@@ -125,15 +133,13 @@ class _SaleListState extends State<SaleList> {
       _showSnack('No permission to edit', isError: true);
       return;
     }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => Scaffold(
-          backgroundColor: Colors.transparent,
-          body: AddSale(onBack: () => Navigator.pop(context), editSale: sale),
-        ),
-      ),
-    ).then((_) => _loadSales(_selectedStation?.stationID)); // refresh on return
+    // Delegate to parent shell via callback — same as onNavigateToAdd.
+    // Parent swaps the body widget so bottom nav stays visible.
+    if (widget.onEditSale != null) {
+      widget.onEditSale!(sale);
+    } else {
+      _showSnack('Edit not configured', isError: true);
+    }
   }
 
   // ════════════════════════════ ACTIONS ════════════════════════════════
@@ -193,12 +199,17 @@ class _SaleListState extends State<SaleList> {
       return;
     }
     if (!sale.canAdvanceStage) return;
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text('Move to ${sale.nextStatus}?'),
+        title: Text(
+          'Move to ${sale.nextStatus}?',
+          style: TextStyle(color: Colors.black, fontSize: 17),
+        ),
         content: Text(
           'Update ${sale.invoiceNo} from "${sale.status}" to "${sale.nextStatus}"?',
+          style: TextStyle(color: Colors.black),
         ),
         actions: [
           TextButton(
@@ -218,14 +229,34 @@ class _SaleListState extends State<SaleList> {
         ],
       ),
     );
-    if (ok == true) {
-      try {
-        await ApiService.updateSaleStatus(sale.lpgSaleID, sale.nextStatus);
-        await _loadSales(_selectedStation?.stationID);
-        _showSnack('Moved to ${sale.nextStatus}');
-      } catch (e) {
-        _showSnack('Failed: $e', isError: true);
-      }
+
+    if (ok != true) return;
+
+    // Dispatched → open the dispatch sheet for scanning/tagging
+    if (sale.nextStatus == 'Dispatched') {
+      if (!mounted) return;
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => DispatchSheet(
+          sale: sale,
+          onDispatched: () {
+            _loadSales(_selectedStation?.stationID);
+            _showSnack('Sale dispatched');
+          },
+        ),
+      );
+      return;
+    }
+
+    // All other statuses (Confirmed, Delivered) — straight API call
+    try {
+      await ApiService.updateSaleStatus(sale.lpgSaleID, sale.nextStatus);
+      await _loadSales(_selectedStation?.stationID);
+      _showSnack('Moved to ${sale.nextStatus}');
+    } catch (e) {
+      _showSnack('Failed: $e', isError: true);
     }
   }
 
@@ -722,7 +753,12 @@ class _SaleListState extends State<SaleList> {
       child: _SaleCardBody(
         sale: sale,
         stageColor: _stageColor(sale.status),
-        stationName: _selectedStation?.stationName,
+        stationName:
+            _selectedStation?.stationName ??
+            _stations
+                .where((st) => st.stationID == sale.stationID)
+                .map((st) => st.stationName)
+                .firstOrNull,
         currencyFormat: _currencyFormat,
         dateFormat: _dateFormat,
         onTap: _canManageSales ? () => _openEditSale(sale) : null,
@@ -938,7 +974,7 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── HEADER: Customer name + Type badge + Stage badge ──────────
+            // ── HEADER: Customer name + Stage badge ───────────────────────
             Container(
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
               decoration: BoxDecoration(
@@ -951,41 +987,14 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            sale.customerName.toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                        ),
-                        if (sale.customerType != null) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              sale.customerType!,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
+                    child: Text(
+                      sale.customerName.toUpperCase(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.2,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -1017,8 +1026,44 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Invoice
-                  _iconRow(Icons.receipt_outlined, sale.invoiceNo),
+                  // Invoice + Customer Type on same row
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.receipt_outlined,
+                        size: 14,
+                        color: Colors.white.withOpacity(0.7),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          sale.invoiceNo,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.85),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      if (sale.customerType != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            sale.customerType!,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                   const SizedBox(height: 5),
                   // Date + Total
                   Row(
@@ -1048,9 +1093,12 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
                     ],
                   ),
                   // Station
-                  if (widget.stationName != null) ...[
+                  if ((sale.stationName ?? widget.stationName) != null) ...[
                     const SizedBox(height: 5),
-                    _iconRow(Icons.warehouse, widget.stationName!),
+                    _iconRow(
+                      Icons.warehouse,
+                      sale.stationName ?? widget.stationName!,
+                    ),
                   ],
                 ],
               ),
@@ -1191,9 +1239,9 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
               ],
             ],
 
-            // ── FOOTER: Phone + Delivery Guy (replaces balance) ───────────
+            // ── FOOTER: Phone (left) + Delivery Guy (right) ──────────────
             Container(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+              padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.04),
                 borderRadius: const BorderRadius.only(
@@ -1206,84 +1254,48 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
                   ),
                 ),
               ),
-              child: Column(
+              child: Row(
                 children: [
-                  // Balance summary row (kept small)
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.account_balance_wallet_outlined,
-                        size: 14,
-                        color: sale.isPaid
-                            ? Colors.green
-                            : AppTheme.primaryOrange,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Balance',
+                  // Phone — left side
+                  if (sale.customerPhone != null &&
+                      sale.customerPhone!.isNotEmpty) ...[
+                    Icon(
+                      Icons.phone_outlined,
+                      size: 14,
+                      color: Colors.white.withOpacity(0.6),
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        sale.customerPhone!,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withOpacity(0.75),
                           fontSize: 12,
                         ),
                       ),
-                      const Spacer(),
-                      Text(
-                        sale.isPaid
-                            ? 'PAID'
-                            : 'KSh ${widget.currencyFormat.format(sale.balance)}',
-                        style: TextStyle(
-                          color: sale.isPaid
-                              ? Colors.green
-                              : const Color(0xFF9C27B0),
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  // Phone
-                  if (sale.customerPhone != null &&
-                      sale.customerPhone!.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.phone_outlined,
-                          size: 14,
-                          color: Colors.white.withOpacity(0.6),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          sale.customerPhone!,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.75),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
                     ),
-                  ],
-                  // Delivery guy
+                  ] else
+                    const Expanded(child: SizedBox()),
+                  // Delivery guy — right side
                   if (sale.deliveryGuy != null &&
                       sale.deliveryGuy!.isNotEmpty &&
                       sale.deliveryGuy != 'N/A') ...[
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.delivery_dining,
-                          size: 14,
-                          color: Colors.white.withOpacity(0.6),
+                    Icon(
+                      Icons.delivery_dining,
+                      size: 14,
+                      color: Colors.white.withOpacity(0.6),
+                    ),
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        sale.deliveryGuy!,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.75),
+                          fontSize: 12,
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          sale.deliveryGuy!,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.75),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+                        textAlign: TextAlign.right,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ],

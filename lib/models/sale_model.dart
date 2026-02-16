@@ -89,8 +89,10 @@ class SaleDto {
   final DateTime saleDate;
   final double balance;
   final int customerID;
+  final int stationID;
   final String customerName;
   final String? customerPhone;
+  final String? stationName;
   final String invoiceNo;
   final String? deliveryGuy;
   final String? dispatcher;
@@ -109,8 +111,10 @@ class SaleDto {
     required this.saleDate,
     required this.balance,
     required this.customerID,
+    required this.stationID,
     required this.customerName,
     this.customerPhone,
+    this.stationName,
     required this.invoiceNo,
     this.deliveryGuy,
     this.dispatcher,
@@ -148,9 +152,11 @@ class SaleDto {
           DateTime.now(),
       balance: _parseDouble(_get(json, 'Balance', 'balance')),
       customerID: _parseInt(_get(json, 'CustomerID', 'customerID')),
+      stationID: _parseInt(_get(json, 'StationID', 'stationID')),
       customerName:
           _get(json, 'CustomerName', 'customerName')?.toString() ?? '',
       customerPhone: _get(json, 'CustomerPhone', 'customerPhone')?.toString(),
+      stationName: _get(json, 'StationName', 'stationName')?.toString(),
       invoiceNo: _get(json, 'InvoiceNo', 'invoiceNo')?.toString() ?? '',
       deliveryGuy: _get(json, 'DeliveryGuy', 'deliveryGuy')?.toString(),
       dispatcher: _get(json, 'Dispatcher', 'dispatcher')?.toString(),
@@ -364,6 +370,7 @@ class CylinderTypeDto {
     'name': cylinderName,
     'price': retailPrice,
     'cylinderPrice': cylinderCost,
+    'capacity': items.isNotEmpty ? items.first.capacity : 0.0,
     'isAccessory': false,
   };
 }
@@ -400,7 +407,7 @@ class AccessoryDto {
   }
 
   Map<String, dynamic> toItemSheetFormat() => {
-    'id': lubId,
+    'id': lubId.toString(),
     'lubId': lubId,
     'name': lubName,
     'price': retailPrice,

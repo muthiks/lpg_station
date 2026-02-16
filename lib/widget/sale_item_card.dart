@@ -54,6 +54,7 @@ class SaleItemCard extends StatelessWidget {
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w500,
+                  fontSize: 13,
                 ),
               ),
               subtitle: Row(
@@ -157,7 +158,7 @@ class SaleItemCard extends StatelessWidget {
                           style: TextStyle(
                             color: AppTheme.primaryOrange,
                             fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                            fontSize: 12,
                           ),
                         ),
                         IconButton(

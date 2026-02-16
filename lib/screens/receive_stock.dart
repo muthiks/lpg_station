@@ -5,7 +5,9 @@ import 'package:lpg_station/widget/receive_bottom_sheet.dart';
 import 'package:lpg_station/widget/receive_card.dart';
 
 class ReceiveStockScreen extends StatefulWidget {
-  const ReceiveStockScreen({super.key});
+  final void Function(int count)? onCountLoaded; // ✅ new
+
+  const ReceiveStockScreen({super.key, this.onCountLoaded}); // ✅ updated
 
   @override
   State<ReceiveStockScreen> createState() => _ReceiveStockScreenState();
@@ -17,7 +19,14 @@ class _ReceiveStockScreenState extends State<ReceiveStockScreen> {
   @override
   void initState() {
     super.initState();
-    receiptsFuture = ApiService.fetchPendingReceipts();
+    receiptsFuture = _fetchAndReport(); // ✅ use wrapper instead of direct call
+  }
+
+  // ✅ Fetches data and fires the count back to the parent tab
+  Future<List<Receive>> _fetchAndReport() async {
+    final results = await ApiService.fetchPendingReceipts();
+    widget.onCountLoaded?.call(results.length);
+    return results;
   }
 
   @override
@@ -55,11 +64,12 @@ class _ReceiveStockScreenState extends State<ReceiveStockScreen> {
             return RefreshIndicator(
               onRefresh: () async {
                 setState(() {
-                  receiptsFuture = ApiService.fetchPendingReceipts();
+                  receiptsFuture =
+                      _fetchAndReport(); // ✅ also report on refresh
                 });
               },
               child: ListView.separated(
-                separatorBuilder: (_, _) => const Divider(color: Colors.white),
+                separatorBuilder: (_, __) => const Divider(color: Colors.white),
                 itemCount: deliveries.length,
                 itemBuilder: (_, index) {
                   return ReceiveCard(
@@ -84,7 +94,7 @@ class _ReceiveStockScreenState extends State<ReceiveStockScreen> {
         receive: receive,
         onSuccess: () {
           setState(() {
-            receiptsFuture = ApiService.fetchPendingReceipts();
+            receiptsFuture = _fetchAndReport(); // ✅ also report after receiving
           });
         },
       ),

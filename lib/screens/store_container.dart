@@ -14,13 +14,11 @@ class _StockTabsContainerState extends State<StockTabsContainer>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  /// Lazy-load flags
-  bool _loadStockBalance = true; // load first tab immediately
+  bool _loadStockBalance = true;
   bool _loadReceiveStock = false;
 
-  /// Badge counts (replace with API values)
-  int stockBalanceCount = 12;
-  int receiveStockCount = 3;
+  // Only receive stock has a badge now
+  int receiveStockCount = 0;
 
   @override
   void initState() {
@@ -29,10 +27,9 @@ class _StockTabsContainerState extends State<StockTabsContainer>
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) return;
-
       setState(() {
         if (_tabController.index == 1) {
-          _loadReceiveStock = true; // lazy load tab 2
+          _loadReceiveStock = true;
         }
       });
     });
@@ -44,6 +41,13 @@ class _StockTabsContainerState extends State<StockTabsContainer>
     super.dispose();
   }
 
+  // Called by ReceiveStockScreen once it loads its data
+  void _onReceiveStockCountLoaded(int count) {
+    setState(() {
+      receiveStockCount = count;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -53,7 +57,6 @@ class _StockTabsContainerState extends State<StockTabsContainer>
             padding: const EdgeInsets.all(10),
             child: Column(
               children: [
-                // 🔹 Title
                 const Padding(
                   padding: EdgeInsets.fromLTRB(0, 15, 0, 20),
                   child: Text(
@@ -66,7 +69,6 @@ class _StockTabsContainerState extends State<StockTabsContainer>
                   ),
                 ),
 
-                // 🔹 Tabs with badges
                 Container(
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.1),
@@ -83,10 +85,9 @@ class _StockTabsContainerState extends State<StockTabsContainer>
                     indicatorSize: TabBarIndicatorSize.tab,
                     dividerColor: Colors.transparent,
                     tabs: [
-                      _tabWithBadge(
-                        label: 'STOCK BALANCE',
-                        count: stockBalanceCount,
-                      ),
+                      // ✅ No badge for Stock Balance
+                      _tabWithBadge(label: 'STOCK BALANCE', count: 0),
+                      // ✅ Badge driven by actual record count
                       _tabWithBadge(
                         label: 'RECEIVE STOCK',
                         count: receiveStockCount,
@@ -97,7 +98,6 @@ class _StockTabsContainerState extends State<StockTabsContainer>
 
                 const SizedBox(height: 15),
 
-                // 🔹 Lazy-loaded Tab Views
                 Expanded(
                   child: TabBarView(
                     controller: _tabController,
@@ -107,7 +107,10 @@ class _StockTabsContainerState extends State<StockTabsContainer>
                           : const SizedBox(),
 
                       _loadReceiveStock
-                          ? const ReceiveStockScreen()
+                          ? ReceiveStockScreen(
+                              // ✅ Pass callback so child can report its count
+                              onCountLoaded: _onReceiveStockCountLoaded,
+                            )
                           : const Center(child: CircularProgressIndicator()),
                     ],
                   ),
@@ -120,7 +123,6 @@ class _StockTabsContainerState extends State<StockTabsContainer>
     );
   }
 
-  /// 🔹 Tab with badge widget
   Widget _tabWithBadge({required String label, required int count}) {
     return Tab(
       child: Row(

@@ -24,7 +24,7 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  HttpOverrides.global = MyHttpOverrides();
+  // HttpOverrides.global = MyHttpOverrides();
   runApp(const MyApp());
 }
 
@@ -72,14 +72,13 @@ class _MainLayoutState extends State<MainLayout> {
       const StockTabsContainer(),
       const Text('Returns'),
       const SaleContainer(),
-      const Text('Payments'),
-      const Text('Accounts'),
+      const Text('Summaries'),
       const ProfileScreen(),
     ];
 
     // Get user role
     final userRole = AuthService.instance.userRole;
-    log('ROLE: $userRole');
+    // log('ROLE: $userRole');
 
     // Get accessible page indices for this role
     accessibleIndices = RoleConfig.getAccessiblePages(userRole);
@@ -158,8 +157,8 @@ class _MainLayoutState extends State<MainLayout> {
       const Icon(Icons.warehouse_sharp, size: 25),
       const Icon(Icons.download_sharp, size: 25),
       const Icon(Icons.shopping_cart_checkout_sharp, size: 25),
-      const Icon(Icons.payments_sharp, size: 25),
-      const Icon(Icons.account_balance_wallet_sharp, size: 25),
+      const Icon(Icons.bar_chart_sharp, size: 25),
+      // const Icon(Icons.account_balance_wallet_sharp, size: 25),
       const Icon(Icons.person_2_sharp, size: 25),
     ];
 

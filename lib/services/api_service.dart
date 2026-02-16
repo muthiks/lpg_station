@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:developer';
 import 'package:http/http.dart' as http;
+import 'package:lpg_station/models/dispatch_cylinder_validation_result.dart';
 import 'package:lpg_station/models/receive_model.dart';
 import 'package:lpg_station/models/sale_model.dart';
 import 'package:lpg_station/services/auth_service.dart';
@@ -45,8 +46,8 @@ class ApiService {
       Uri.parse('$_baseUrl/GetLpgUserStations'),
       headers: _headers,
     );
-    log('STATUS: ${response.statusCode}');
-    log('BODY: ${response.body}');
+    // log('STATUS: ${response.statusCode}');
+    // log('BODY: ${response.body}');
 
     if (response.statusCode == 200) {
       final List<dynamic> data = json.decode(response.body);
@@ -54,6 +55,23 @@ class ApiService {
     } else {
       throw Exception('Failed to load stations');
     }
+  }
+
+  static Future<bool> receiveLpgSupply(Map<String, dynamic> payload) async {
+    final url = Uri.parse('$_baseUrl/ReceiveLpgSupply');
+    final response = await http.post(
+      url,
+      headers: _headers,
+      body: jsonEncode(payload), // Just send the string directly
+    );
+    // log('STATUS: ${response.statusCode}');
+    // log('BODY: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['IsValid'] == true;
+    }
+    return false;
   }
 
   ///GET Trucks/////
@@ -113,8 +131,8 @@ class ApiService {
     }
 
     final response = await http.get(Uri.parse(url), headers: _headers);
-    log('STATUS: ${response.statusCode}');
-    log('BODY: ${response.body}');
+    // log('STATUS: ${response.statusCode}');
+    // log('BODY: ${response.body}');
 
     if (response.statusCode == 200) {
       final List<dynamic> data = json.decode(response.body);
@@ -126,13 +144,32 @@ class ApiService {
 
   // Update sale status (Draft → Confirmed → Dispatched → Delivered)
   static Future<void> updateSaleStatus(int saleId, String newStatus) async {
-    final response = await http.get(
-      Uri.parse('$_baseUrl/UpdateSaleStatus?saleId=$saleId&status=$newStatus'),
-      headers: _headers,
-    );
+    try {
+      final response = await http.patch(
+        Uri.parse(
+          '$_baseUrl/UpdateSaleStatus?saleId=$saleId&status=$newStatus',
+        ),
+        headers: _headers,
+      );
 
-    if (response.statusCode != 200) {
-      throw Exception('Failed to update status: ${response.body}');
+      log('updateSaleStatus: ${response.statusCode} body: ${response.body}');
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to update status: \${response.body}');
+      }
+
+      // Parse ResponseObject — IsValid:false means a business rule blocked the change
+      // e.g. "Cannot skip stages" or "Sale not found"
+      final result = json.decode(response.body) as Map<String, dynamic>;
+      final isValid = result['isValid'] ?? result['IsValid'] ?? true;
+      if (isValid == false) {
+        final msg =
+            result['message'] ?? result['Message'] ?? 'Status update failed';
+        throw Exception(msg);
+      }
+    } catch (e) {
+      log('Error updating sale status: $e');
+      rethrow;
     }
   }
 
@@ -153,18 +190,29 @@ class ApiService {
   }
 
   // Create a new sale
-  static Future<void> createSale(Map<String, dynamic> saleData) async {
+  static Future<void> createSale(Map<String, dynamic> data) async {
     try {
-      final url = Uri.parse('$_baseUrl/ValidateRefillCylinder');
+      final url = Uri.parse('$_baseUrl/PostLpgSale');
 
       final response = await http.post(
         url,
         headers: _headers,
-        body: jsonEncode(saleData), // Just send the string directly
+        body: jsonEncode(data), // Just send the string directly
       );
 
+      log('createSale status: ${response.statusCode} body: ${response.body}');
       if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception('Failed to create sale: ${response.body}');
+      }
+      // ResponseObject: IsValid:false = business rule failure (e.g. insufficient stock)
+      final result = json.decode(response.body) as Map<String, dynamic>;
+      final isValid = result['isValid'] ?? result['IsValid'] ?? true;
+      if (isValid == false) {
+        final msg =
+            result['message'] ??
+            result['Message'] ??
+            'Sale could not be created';
+        throw Exception(msg);
       }
     } catch (e) {
       log('Error creating sale: $e');
@@ -173,25 +221,126 @@ class ApiService {
   }
 
   // Update an existing sale
-  static Future<void> updateSale(
-    int saleId,
-    Map<String, dynamic> saleData,
-  ) async {
+  static Future<void> updateSale(Map<String, dynamic> payload) async {
     try {
-      final url = Uri.parse('$_baseUrl/ValidateRefillCylinder');
-
-      final response = await http.post(
+      final url = Uri.parse('$_baseUrl/UpdateLpgSale');
+      final response = await http.put(
         url,
         headers: _headers,
-        body: jsonEncode(saleData), // Just send the string directly
+        body: jsonEncode(payload), // Just send the string directly
       );
 
-      if (response.statusCode != 200) {
+      log('updateSale status: ${response.statusCode} body: ${response.body}');
+      if (response.statusCode != 200 && response.statusCode != 204) {
         throw Exception('Failed to update sale: ${response.body}');
+      }
+      // ResponseObject: IsValid:false = business rule failure (e.g. insufficient stock)
+      if (response.body.isNotEmpty) {
+        final result = json.decode(response.body) as Map<String, dynamic>;
+        final isValid = result['isValid'] ?? result['IsValid'] ?? true;
+        if (isValid == false) {
+          final msg =
+              result['message'] ??
+              result['Message'] ??
+              'Sale could not be updated';
+          throw Exception(msg);
+        }
       }
     } catch (e) {
       log('Error updating sale: $e');
       rethrow;
+    }
+  }
+
+  //── Dispatch sale (POST /DispatchSale) ────────────────────────────────────────
+  // mode: 'Tagged' | 'NonTagged' | 'Both'
+  // tagged:   { cylinderID: [barcodes] }
+  // untagged: { cylinderID: count }
+  static Future<void> dispatchSale({
+    required int saleId,
+    required String mode,
+    required Map<int, List<String>> tagged,
+    required Map<int, int> untagged,
+  }) async {
+    try {
+      final payload = {
+        'SaleId': saleId,
+        'Mode': mode,
+        'Tagged': tagged.map((k, v) => MapEntry(k.toString(), v)),
+        'Untagged': untagged.map((k, v) => MapEntry(k.toString(), v)),
+      };
+      final url = Uri.parse('$_baseUrl/DispatchSale');
+      final response = await http.post(
+        url,
+        headers: _headers,
+        body: jsonEncode(payload), // Just send the string directly
+      );
+
+      log('dispatchSale: ${response.statusCode} body: ${response.body}');
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception('Failed to dispatch: ${response.body}');
+      }
+      final result = json.decode(response.body) as Map<String, dynamic>;
+      final isValid = result['isValid'] ?? result['IsValid'] ?? true;
+      if (isValid == false) {
+        throw Exception(
+          result['message'] ?? result['Message'] ?? 'Dispatch failed',
+        );
+      }
+    } catch (e) {
+      log('Error dispatching sale: $e');
+      rethrow;
+    }
+  }
+
+  // ── Validate a scanned cylinder before adding to dispatch list ────────────────
+  static Future<CylinderValidationResult> validateDispatchCylinder({
+    required String barcode,
+    required int stationId,
+    required List<int> allowedCylinderIds,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+          '$_baseUrl/ValidateDispatchCylinder?barcode=${Uri.encodeComponent(barcode)}&stationId=$stationId',
+        ),
+        headers: _headers,
+      );
+
+      if (response.statusCode != 200) {
+        return CylinderValidationResult(
+          isValid: false,
+          message: 'Validation request failed',
+        );
+      }
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final isValid = data['isValid'] ?? data['IsValid'] ?? false;
+      final message = data['message'] ?? data['Message'] ?? '';
+      final cylID = data['cylinderID'] ?? data['CylinderID'];
+      final lubName = data['lubName'] ?? data['LubName'] ?? '';
+
+      if (isValid == false) {
+        return CylinderValidationResult(isValid: false, message: message);
+      }
+      // Check the returned cylinder type is in the sale
+      if (cylID != null && !allowedCylinderIds.contains(cylID as int)) {
+        return CylinderValidationResult(
+          isValid: false,
+          message: '$lubName is not part of this sale',
+        );
+      }
+      return CylinderValidationResult(
+        isValid: true,
+        message: '',
+        cylinderID: cylID as int?,
+        lubName: lubName,
+      );
+    } catch (e) {
+      log('Error validating cylinder: $e');
+      return CylinderValidationResult(
+        isValid: false,
+        message: 'Validation error: $e',
+      );
     }
   }
 }

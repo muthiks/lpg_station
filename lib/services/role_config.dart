@@ -9,10 +9,10 @@ class RoleConfig {
 
   // Define which pages each role can access
   static Map<String, List<int>> rolePages = {
-    admin: [0, 1, 2, 3, 4, 5, 6], // All pages
-    driver: [0, 2, 6],
-    user: [0, 1, 2, 3, 4, 5, 6],
-    manager: [0, 1, 2, 3, 4, 5, 6], // Only home and delivery
+    admin: [0, 1, 2, 3, 4, 5], // All pages
+    driver: [0, 2, 5],
+    user: [0, 1, 2, 3, 4, 5],
+    manager: [0, 1, 2, 3, 4, 5], // Only home and delivery
   };
 
   // Define default page for each role after login
@@ -25,7 +25,7 @@ class RoleConfig {
 
   // Get accessible page indices for a role
   static List<int> getAccessiblePages(String? role) {
-    return rolePages[role] ?? [6]; // Default to just home if role not found
+    return rolePages[role] ?? [5]; // Default to just home if role not found
   }
 
   // Get default page for a role
