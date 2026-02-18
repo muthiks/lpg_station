@@ -1179,7 +1179,7 @@ class _AddSaleState extends State<AddSale> {
 
   // ════════════════════════════ UI HELPERS ═════════════════════════════
 
-  Widget _sectionLabel(String text, [IconData? icon]) {
+  Widget _sectionLabel(String text) {
     return Text(
       text,
       style: const TextStyle(

@@ -4,18 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:lpg_station/models/sale_model.dart';
 import 'package:lpg_station/services/api_service.dart';
 import 'package:lpg_station/theme/theme.dart';
+import 'package:lpg_station/widget/barcode_scanner_view.dart';
+import 'package:lpg_station/widget/scanner_toggle.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  DispatchSheet
-//  Opens after user confirms "Move to Dispatched".
-//  Step 1: choose mode  → Tagged | Non Tagged | Both
-//  Step 2: scan / enter untagged counts
-//  Step 3: confirm dispatch
-// ─────────────────────────────────────────────────────────────────────────────
 class DispatchSheet extends StatefulWidget {
   final SaleDto sale;
   final VoidCallback onDispatched;
-
   const DispatchSheet({
     super.key,
     required this.sale,
@@ -27,33 +21,23 @@ class DispatchSheet extends StatefulWidget {
 }
 
 class _DispatchSheetState extends State<DispatchSheet> {
-  // ── Step 1: mode selection ─────────────────────────────────────────────
-  String? _mode; // 'Tagged' | 'NonTagged' | 'Both'
-
-  // ── Scanner ────────────────────────────────────────────────────────────
-  bool _useCameraScanner = true; // false = physical scanner (keyboard wedge)
+  String? _mode;
+  bool _useCameraScanner = true;
   bool _scannerActive = false;
+
   final FocusNode _scanFocus = FocusNode();
   final TextEditingController _scanController = TextEditingController();
   String _scanBuffer = '';
 
-  // ── Scanned barcodes grouped by cylinderID ─────────────────────────────
-  // { cylinderID: { lubName, barcodes: [..] } }
   final Map<int, _CylGroup> _scanned = {};
-
-  // ── Untagged counts (for Both mode) ───────────────────────────────────
-  // { cylinderID: TextEditingController }
   final Map<int, TextEditingController> _untaggedControllers = {};
 
-  // ── Validation / submission state ─────────────────────────────────────
   bool _isSubmitting = false;
   String? _scanError;
 
-  // Cylinder-only sale details (no accessories)
   List<SaleDetailDto> get _cylDetails =>
       widget.sale.saleDetails.where((d) => d.cylStatus != 'Accessory').toList();
 
-  // Max tagged per cylinder type = sale qty  (Both mode: sale qty minus untagged)
   int _maxTagged(int cylID) {
     final detail = _cylDetails.firstWhere(
       (d) => d.cylinderID == cylID,
@@ -65,10 +49,8 @@ class _DispatchSheetState extends State<DispatchSheet> {
   }
 
   int _scannedCount(int cylID) => _scanned[cylID]?.barcodes.length ?? 0;
-
   int get _totalScanned =>
       _scanned.values.fold(0, (s, g) => s + g.barcodes.length);
-
   int get _totalSaleQty => _cylDetails.fold(0, (s, d) => s + d.quantity);
 
   bool get _allTaggedComplete {
@@ -89,8 +71,8 @@ class _DispatchSheetState extends State<DispatchSheet> {
           final untagged =
               int.tryParse(_untaggedControllers[d.cylinderID]?.text ?? '0') ??
               0;
-          final tagged = _scannedCount(d.cylinderID);
-          if (tagged + untagged != d.quantity) return false;
+          if (_scannedCount(d.cylinderID) + untagged != d.quantity)
+            return false;
         }
         return true;
       default:
@@ -114,7 +96,6 @@ class _DispatchSheetState extends State<DispatchSheet> {
     super.dispose();
   }
 
-  // ── Scanner logic ──────────────────────────────────────────────────────
   void _toggleScanner(bool active) {
     setState(() {
       _scannerActive = active;
@@ -141,11 +122,8 @@ class _DispatchSheetState extends State<DispatchSheet> {
 
   Future<void> _processBarcode(String barcode) async {
     if (barcode.isEmpty) return;
-    setState(() {
-      _scanError = null;
-    });
+    setState(() => _scanError = null);
 
-    // ── Duplicate check ──────────────────────────────────────────────────
     for (final group in _scanned.values) {
       if (group.barcodes.contains(barcode)) {
         setState(() => _scanError = 'Barcode "$barcode" already scanned');
@@ -153,7 +131,6 @@ class _DispatchSheetState extends State<DispatchSheet> {
       }
     }
 
-    // ── Validate cylinder via API ─────────────────────────────────────────
     try {
       final result = await ApiService.validateDispatchCylinder(
         barcode: barcode,
@@ -167,15 +144,12 @@ class _DispatchSheetState extends State<DispatchSheet> {
       }
 
       final cylID = result.cylinderID!;
-
-      // ── Check this type's tagged count won't exceed max ────────────────
       final already = _scannedCount(cylID);
       final max = _maxTagged(cylID);
       if (already >= max) {
         final detail = _cylDetails.firstWhere((d) => d.cylinderID == cylID);
         setState(
-          () => _scanError =
-              '${detail.lubName}: tagged limit reached ($already/$max)',
+          () => _scanError = '${detail.lubName}: limit reached ($already/$max)',
         );
         return;
       }
@@ -193,45 +167,35 @@ class _DispatchSheetState extends State<DispatchSheet> {
             .add(barcode);
       });
     } catch (e) {
+      log('Scan error: $e');
       setState(() => _scanError = 'Validation error: $e');
     }
   }
 
-  // ── Submit dispatch ────────────────────────────────────────────────────
   Future<void> _dispatch() async {
-    setState(() {
-      _isSubmitting = true;
-    });
+    setState(() => _isSubmitting = true);
     try {
-      // Build tagged payload: { cylinderID: [barcodes] }
-      final taggedMap = <int, List<String>>{};
-      for (final entry in _scanned.entries) {
-        taggedMap[entry.key] = entry.value.barcodes;
+      if (_mode == 'NonTagged') {
+        await ApiService.updateSaleStatus(widget.sale.lpgSaleID, 'Dispatched');
+      } else {
+        await ApiService.dispatchSale(
+          saleId: widget.sale.lpgSaleID,
+          mode: _mode!,
+          tagged: {for (final e in _scanned.entries) e.key: e.value.barcodes},
+          untagged: _mode == 'Both'
+              ? {
+                  for (final e in _untaggedControllers.entries)
+                    e.key: int.tryParse(e.value.text) ?? 0,
+                }
+              : {},
+        );
       }
-
-      // Build untagged payload: { cylinderID: count }
-      final untaggedMap = <int, int>{};
-      if (_mode == 'Both' || _mode == 'NonTagged') {
-        for (final entry in _untaggedControllers.entries) {
-          untaggedMap[entry.key] = int.tryParse(entry.value.text) ?? 0;
-        }
-      }
-
-      await ApiService.dispatchSale(
-        saleId: widget.sale.lpgSaleID,
-        mode: _mode!,
-        tagged: taggedMap,
-        untagged: untaggedMap,
-      );
-
       if (mounted) {
         Navigator.pop(context);
         widget.onDispatched();
       }
     } catch (e) {
-      setState(() {
-        _isSubmitting = false;
-      });
+      setState(() => _isSubmitting = false);
       _showSnack('Dispatch failed: $e', isError: true);
     }
   }
@@ -245,7 +209,6 @@ class _DispatchSheetState extends State<DispatchSheet> {
     );
   }
 
-  // ── Build ──────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -256,17 +219,16 @@ class _DispatchSheetState extends State<DispatchSheet> {
         expand: false,
         builder: (_, scrollCtrl) => Container(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
+            gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [const Color(0xFF2C1810), const Color(0xFF1A1A1A)],
+              colors: [Color(0xFF2C1810), Color(0xFF1A1A1A)],
             ),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             border: Border.all(color: AppTheme.primaryOrange.withOpacity(0.3)),
           ),
           child: Column(
             children: [
-              // ── Handle ────────────────────────────────────────────────────
               Container(
                 margin: const EdgeInsets.only(top: 12, bottom: 4),
                 width: 40,
@@ -276,8 +238,6 @@ class _DispatchSheetState extends State<DispatchSheet> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-
-              // ── Header ────────────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: Row(
@@ -317,9 +277,7 @@ class _DispatchSheetState extends State<DispatchSheet> {
                   ],
                 ),
               ),
-
               const Divider(color: Colors.white12, height: 20),
-
               Expanded(
                 child: _mode == null
                     ? _buildModeSelector(scrollCtrl)
@@ -332,7 +290,6 @@ class _DispatchSheetState extends State<DispatchSheet> {
     );
   }
 
-  // ── Step 1: Mode selector ──────────────────────────────────────────────
   Widget _buildModeSelector(ScrollController ctrl) {
     return ListView(
       controller: ctrl,
@@ -370,11 +327,9 @@ class _DispatchSheetState extends State<DispatchSheet> {
     );
   }
 
-  // ── Step 2: dispatch content ───────────────────────────────────────────
   Widget _buildDispatchContent(ScrollController ctrl) {
     return Column(
       children: [
-        // Mode badge + back
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
@@ -384,6 +339,7 @@ class _DispatchSheetState extends State<DispatchSheet> {
                   _mode = null;
                   _scanned.clear();
                   _scanError = null;
+                  _scannerActive = false;
                 }),
                 child: Row(
                   children: [
@@ -432,11 +388,8 @@ class _DispatchSheetState extends State<DispatchSheet> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             children: [
               if (_mode != 'NonTagged') ...[
-                // ── Scanner controls ─────────────────────────────────────────
-                _buildScannerControls(),
+                _buildScannerSection(),
                 const SizedBox(height: 12),
-
-                // ── Error banner ─────────────────────────────────────────────
                 if (_scanError != null)
                   Container(
                     margin: const EdgeInsets.only(bottom: 10),
@@ -477,18 +430,13 @@ class _DispatchSheetState extends State<DispatchSheet> {
                       ],
                     ),
                   ),
-
-                // ── Progress bar ─────────────────────────────────────────────
                 _buildProgressBar(),
                 const SizedBox(height: 12),
               ],
 
-              // ── Cylinder type breakdown ───────────────────────────────────
-              ..._cylDetails.map((d) => _buildCylRow(d)),
-
+              ..._cylDetails.map(_buildCylRow),
               const SizedBox(height: 20),
 
-              // ── Dispatch button ───────────────────────────────────────────
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -514,7 +462,7 @@ class _DispatchSheetState extends State<DispatchSheet> {
                       : const Text(
                           'Confirm Dispatch',
                           style: TextStyle(
-                            color: Colors.black,
+                            color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
                           ),
@@ -528,114 +476,73 @@ class _DispatchSheetState extends State<DispatchSheet> {
     );
   }
 
-  // ── Scanner controls ────────────────────────────────────────────────────
-  Widget _buildScannerControls() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: Column(
-        children: [
-          // Camera / Physical toggle
-          Row(
-            children: [
-              const Icon(Icons.camera_alt, color: Colors.white54, size: 16),
-              const SizedBox(width: 6),
-              Text(
-                'Camera Scanner',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
-                  fontSize: 13,
-                ),
-              ),
-              const Spacer(),
-              Switch(
-                value: _useCameraScanner,
-                onChanged: (v) => setState(() {
-                  _useCameraScanner = v;
-                  if (_scannerActive && !v) {
-                    Future.delayed(
-                      const Duration(milliseconds: 100),
-                      () => FocusScope.of(context).requestFocus(_scanFocus),
-                    );
-                  }
-                }),
-                activeThumbColor: AppTheme.primaryOrange,
-              ),
-              const SizedBox(width: 4),
-              const Icon(Icons.barcode_reader, color: Colors.white54, size: 16),
-              const SizedBox(width: 4),
-              Text(
-                'Physical',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
+  Widget _buildScannerSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Camera / Physical pill selector
+        Row(
+          children: [
+            _ScannerTypePill(
+              icon: Icons.camera_alt,
+              label: 'Camera',
+              selected: _useCameraScanner,
+              onTap: () {
+                if (!_useCameraScanner)
+                  setState(() {
+                    _useCameraScanner = true;
+                    _scannerActive = false;
+                  });
+              },
+            ),
+            const SizedBox(width: 8),
+            _ScannerTypePill(
+              icon: Icons.barcode_reader,
+              label: 'Physical',
+              selected: !_useCameraScanner,
+              onTap: () {
+                if (_useCameraScanner)
+                  setState(() {
+                    _useCameraScanner = false;
+                    _scannerActive = false;
+                  });
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
 
-          const SizedBox(height: 8),
+        // ScannerToggle — existing widget for on/off
+        ScannerToggle(isScanning: _scannerActive, onToggle: _toggleScanner),
 
-          // Scan on/off button
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              icon: Icon(
-                _scannerActive ? Icons.stop : Icons.play_arrow,
-                color: _scannerActive
-                    ? Colors.redAccent
-                    : AppTheme.primaryOrange,
+        // Physical: hidden TextField captures keyboard wedge input
+        if (_scannerActive && !_useCameraScanner)
+          Opacity(
+            opacity: 0,
+            child: SizedBox(
+              height: 1,
+              child: TextField(
+                focusNode: _scanFocus,
+                controller: _scanController,
+                onChanged: _onKeyboardScanChanged,
+                autofocus: true,
               ),
-              label: Text(
-                _scannerActive ? 'Stop Scanning' : 'Start Scanning',
-                style: TextStyle(
-                  color: _scannerActive
-                      ? Colors.redAccent
-                      : AppTheme.primaryOrange,
-                ),
-              ),
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(
-                  color: _scannerActive
-                      ? Colors.redAccent
-                      : AppTheme.primaryOrange,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              onPressed: () => _toggleScanner(!_scannerActive),
             ),
           ),
 
-          // Hidden text field for physical scanner (keyboard wedge)
-          if (_scannerActive && !_useCameraScanner)
-            Opacity(
-              opacity: 0,
-              child: SizedBox(
-                height: 1,
-                child: TextField(
-                  focusNode: _scanFocus,
-                  controller: _scanController,
-                  onChanged: _onKeyboardScanChanged,
-                  autofocus: true,
-                ),
-              ),
-            ),
-
-          // Camera scanner view
-          if (_scannerActive && _useCameraScanner)
-            _CameraScanner(onBarcode: _processBarcode),
+        // Camera: real BarcodeScannerView
+        if (_scannerActive && _useCameraScanner) ...[
+          const SizedBox(height: 10),
+          BarcodeScannerView(
+            onDetected: _processBarcode,
+            height: 220,
+            rescanDelayMs: 1500,
+          ),
         ],
-      ),
+      ],
     );
   }
 
-  // ── Progress bar ────────────────────────────────────────────────────────
   Widget _buildProgressBar() {
     final progress = _totalSaleQty == 0 ? 0.0 : _totalScanned / _totalSaleQty;
     return Column(
@@ -674,7 +581,6 @@ class _DispatchSheetState extends State<DispatchSheet> {
     );
   }
 
-  // ── Per-cylinder row ────────────────────────────────────────────────────
   Widget _buildCylRow(SaleDetailDto d) {
     final scannedBarcodes = _scanned[d.cylinderID]?.barcodes ?? [];
     final scannedCount = scannedBarcodes.length;
@@ -697,7 +603,6 @@ class _DispatchSheetState extends State<DispatchSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header row ───────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
             child: Row(
@@ -731,7 +636,6 @@ class _DispatchSheetState extends State<DispatchSheet> {
                     ),
                   ),
                 ),
-                // Badge
                 _CountBadge(
                   scanned: _mode == 'NonTagged' ? d.quantity : scannedCount,
                   total: d.quantity,
@@ -740,7 +644,6 @@ class _DispatchSheetState extends State<DispatchSheet> {
             ),
           ),
 
-          // ── Untagged input (Both mode) ────────────────────────────────────
           if (_mode == 'Both')
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -769,29 +672,30 @@ class _DispatchSheetState extends State<DispatchSheet> {
                         fillColor: Colors.white.withOpacity(0.1),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(6),
-                          borderSide: BorderSide(color: Colors.white24),
+                          borderSide: const BorderSide(color: Colors.white24),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(6),
-                          borderSide: BorderSide(color: Colors.white24),
+                          borderSide: const BorderSide(color: Colors.white24),
                         ),
                       ),
                       onChanged: (_) => setState(() {}),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    'Tagged: $scannedCount  Total: ${scannedCount + (int.tryParse(_untaggedControllers[d.cylinderID]?.text ?? "0") ?? 0)} / ${d.quantity}',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.55),
-                      fontSize: 11,
+                  Flexible(
+                    child: Text(
+                      'Tagged: $scannedCount  Total: ${scannedCount + (int.tryParse(_untaggedControllers[d.cylinderID]?.text ?? "0") ?? 0)} / ${d.quantity}',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.55),
+                        fontSize: 11,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
 
-          // ── Barcode chips ─────────────────────────────────────────────────
           if (scannedBarcodes.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
@@ -804,10 +708,8 @@ class _DispatchSheetState extends State<DispatchSheet> {
                         barcode: bc,
                         onDelete: () => setState(() {
                           _scanned[d.cylinderID]?.barcodes.remove(bc);
-                          if (_scanned[d.cylinderID]?.barcodes.isEmpty ==
-                              true) {
+                          if (_scanned[d.cylinderID]?.barcodes.isEmpty == true)
                             _scanned.remove(d.cylinderID);
-                          }
                         }),
                       ),
                     )
@@ -826,9 +728,58 @@ class _DispatchSheetState extends State<DispatchSheet> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Sub-widgets
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Scanner type pill ─────────────────────────────────────────────────────────
+class _ScannerTypePill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _ScannerTypePill({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTheme.primaryOrange
+              : Colors.white.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppTheme.primaryOrange : Colors.white24,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: selected ? Colors.white : Colors.white54,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                color: selected ? Colors.white : Colors.white54,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _ModeCard extends StatelessWidget {
   final IconData icon;
@@ -836,7 +787,6 @@ class _ModeCard extends StatelessWidget {
   final String subtitle;
   final Color color;
   final VoidCallback onTap;
-
   const _ModeCard({
     required this.icon,
     required this.title,
@@ -873,7 +823,7 @@ class _ModeCard extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
@@ -969,59 +919,9 @@ class _BarcodeChip extends StatelessWidget {
   }
 }
 
-// ── Cylinder group — holds scanned barcodes for one cylinder type ─────────────
 class _CylGroup {
   final int cylID;
   final String lubName;
   final List<String> barcodes = [];
-
   _CylGroup({required this.cylID, required this.lubName});
-}
-
-// ── Camera scanner stub ───────────────────────────────────────────────────────
-// Replace with your actual MobileScanner or camera_barcode_scan implementation.
-// It just needs to call onBarcode(code) when a scan is detected.
-class _CameraScanner extends StatelessWidget {
-  final void Function(String) onBarcode;
-  const _CameraScanner({required this.onBarcode});
-
-  @override
-  Widget build(BuildContext context) {
-    // ── REPLACE THIS with your MobileScanner widget, e.g.:
-    // return ClipRRect(
-    //   borderRadius: BorderRadius.circular(8),
-    //   child: SizedBox(
-    //     height: 200,
-    //     child: MobileScanner(
-    //       onDetect: (capture) {
-    //         final barcode = capture.barcodes.firstOrNull?.rawValue;
-    //         if (barcode != null) onBarcode(barcode);
-    //       },
-    //     ),
-    //   ),
-    // );
-    return Container(
-      height: 180,
-      margin: const EdgeInsets.only(top: 8),
-      decoration: BoxDecoration(
-        color: Colors.black45,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white24),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.camera_alt, color: Colors.white38, size: 36),
-            const SizedBox(height: 8),
-            Text(
-              'Camera scanner — wire in MobileScanner here',
-              style: TextStyle(color: Colors.white38, fontSize: 12),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
