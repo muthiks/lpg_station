@@ -29,7 +29,7 @@ class Receive {
       customer: json['DealerName'],
       stationID: json['StationID'],
       invoiceNo: json['InvoiceNo'],
-      user: json['User'],
+      user: json['User'] ?? '',
       cylinders: (json['Cylinders'] as List)
           .map((e) => CylinderBadge.fromJson(e))
           .toList(),

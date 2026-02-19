@@ -503,7 +503,7 @@ class _StockBalanceState extends State<StockBalanceScreen> {
         children: [
           // ── Cylinders Section ──────────────────────
           if (hasCylinders) ...[
-            _sectionHeader('Cylinders', Icons.propane_tank, Colors.blue),
+            _sectionHeader('Cylinders', Icons.propane_tank, Colors.white),
             const SizedBox(height: 10),
             ...stock.cylinders.map((c) => _buildCylinderCard(c)),
           ],
@@ -610,7 +610,7 @@ class _StockBalanceState extends State<StockBalanceScreen> {
                   child: Text(
                     'Total: $grandTotal',
                     style: const TextStyle(
-                      color: Colors.blue,
+                      color: Colors.white,
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
@@ -628,7 +628,7 @@ class _StockBalanceState extends State<StockBalanceScreen> {
                 _statBox(
                   'Filled',
                   totalFilled,
-                  Colors.green,
+                  Colors.tealAccent,
                   Icons.check_circle,
                 ),
                 const SizedBox(width: 8),
@@ -642,7 +642,7 @@ class _StockBalanceState extends State<StockBalanceScreen> {
                 _statBox(
                   'Reserved',
                   totalReserved,
-                  Colors.blue,
+                  Colors.deepPurple,
                   Icons.lock_outline,
                 ),
               ],
@@ -725,7 +725,7 @@ class _StockBalanceState extends State<StockBalanceScreen> {
                 Text(
                   'Total: $total',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
+                    color: Colors.white.withOpacity(0.8),
                     fontSize: 12,
                   ),
                 ),
@@ -735,9 +735,9 @@ class _StockBalanceState extends State<StockBalanceScreen> {
           // Stats
           Row(
             children: [
-              _statPill('Available', available, Colors.green),
+              _statPill('Available', available, Colors.tealAccent),
               const SizedBox(width: 8),
-              _statPill('Reserved', reserved, Colors.blue),
+              _statPill('Reserved', reserved, Colors.deepPurple),
             ],
           ),
         ],
@@ -771,7 +771,7 @@ class _StockBalanceState extends State<StockBalanceScreen> {
             Text(
               label,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withOpacity(0.8),
                 fontSize: 11,
               ),
             ),

@@ -26,7 +26,7 @@ class CylinderBadge {
     );
   }
 
-  int get receivedCount => totalCount - undeliveredCount;
+  int get receivedCount => undeliveredCount;
   bool get isFullyReceived => undeliveredCount == 0;
   String get badgeText => '$cylinderType - ($receivedCount-$totalCount)';
 }
