@@ -7,8 +7,10 @@ import 'package:lpg_station/models/sale_model.dart';
 import 'package:lpg_station/services/auth_service.dart';
 
 class ApiService {
-  // static const String _baseUrl = 'https://10.0.2.2:7179/api/LpgMobile';
-  static const String _baseUrl = 'https://lqadmin.com/api/LpgMobile';
+  //static const String _baseUrl = 'https://10.0.2.2:7179/api/LpgMobile';
+  static const String _baseUrl =
+      'https://luqman-staging.lqadmin.com/api/LpgMobile';
+  //static const String _baseUrl = 'https://lqadmin.com/api/LpgMobile';
 
   static const String _apiKey =
       'xj0F3qtEyk2Gyytvlc4FaEaazHMSyZCER4mXskX3IatStgDORlMvpwcEYQ4bowRxTsUbKSgBxcYtczV89djWtHoGea9Zv1w0Rfxt86l82ibSdWtQe0mgSioVK9Hesj7Q';

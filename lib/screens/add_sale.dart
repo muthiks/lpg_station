@@ -473,12 +473,15 @@ class _AddSaleState extends State<AddSale> {
           children: [
             Icon(Icons.delete_outline, color: Colors.red, size: 22),
             SizedBox(width: 8),
-            Text('Remove Item', style: TextStyle(fontSize: 16)),
+            Text(
+              'Remove Item',
+              style: TextStyle(fontSize: 16, color: Colors.black),
+            ),
           ],
         ),
         content: Text(
           'Remove "${item.cylinderTypeName}" (x${item.quantity}) from this sale?',
-          style: const TextStyle(fontSize: 14),
+          style: const TextStyle(fontSize: 14, color: Colors.black),
         ),
         actions: [
           TextButton(
