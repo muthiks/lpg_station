@@ -2,12 +2,12 @@
 class CylinderValidationResult {
   final bool isValid;
   final String message;
-  final int? cylinderID;
+  final int? lubId;
   final String? lubName;
   CylinderValidationResult({
     required this.isValid,
     required this.message,
-    this.cylinderID,
+    this.lubId,
     this.lubName,
   });
 }

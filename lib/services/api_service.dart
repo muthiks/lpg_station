@@ -300,12 +300,12 @@ class ApiService {
   static Future<CylinderValidationResult> validateDispatchCylinder({
     required String barcode,
     required int stationId,
-    required List<int> allowedCylinderIds,
+    required int saleId,
   }) async {
     try {
       final response = await http.get(
         Uri.parse(
-          '$_baseUrl/ValidateDispatchCylinder?barcode=${Uri.encodeComponent(barcode)}&stationId=$stationId',
+          '$_baseUrl/ValidateDispatchCylinder?barcode=${Uri.encodeComponent(barcode)}&stationId=$stationId&saleId=$saleId',
         ),
         headers: _headers,
       );
@@ -319,23 +319,17 @@ class ApiService {
       final data = json.decode(response.body) as Map<String, dynamic>;
       final isValid = data['isValid'] ?? data['IsValid'] ?? false;
       final message = data['message'] ?? data['Message'] ?? '';
-      final cylID = data['cylinderID'] ?? data['CylinderID'];
+      final cylID = data['lubId'] ?? data['LubId'];
       final lubName = data['lubName'] ?? data['LubName'] ?? '';
 
       if (isValid == false) {
         return CylinderValidationResult(isValid: false, message: message);
       }
-      // Check the returned cylinder type is in the sale
-      if (cylID != null && !allowedCylinderIds.contains(cylID as int)) {
-        return CylinderValidationResult(
-          isValid: false,
-          message: '$lubName is not part of this sale',
-        );
-      }
+      // Server already validated LubId — trust the response
       return CylinderValidationResult(
         isValid: true,
         message: '',
-        cylinderID: cylID as int?,
+        lubId: cylID as int?,
         lubName: lubName,
       );
     } catch (e) {

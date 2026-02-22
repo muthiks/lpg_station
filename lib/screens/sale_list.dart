@@ -156,9 +156,10 @@ class _SaleListState extends State<SaleList> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete Sale'),
+        title: const Text('Delete Sale', style: TextStyle(color: Colors.black)),
         content: Text(
           'Delete invoice ${sale.invoiceNo}? This cannot be undone.',
+          style: TextStyle(color: Colors.black),
         ),
         actions: [
           TextButton(

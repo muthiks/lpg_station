@@ -664,7 +664,7 @@ class _AddSaleState extends State<AddSale> {
         'CustomerID': _selectedCustomer!.customerID,
         'CustomerName': _selectedCustomer!.customerName,
         'StationID': _selectedStation!.stationID,
-        'DeliveryGuy': _selectedDeliveryGuy!.id,
+        'DeliveryGuy': deliveryGuy,
         'AddedBy': 'user',
         'DateAdded': now.toIso8601String(),
 
