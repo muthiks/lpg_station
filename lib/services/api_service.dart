@@ -1,15 +1,17 @@
 import 'dart:convert';
 import 'dart:developer';
 import 'package:http/http.dart' as http;
+import 'package:lpg_station/models/cylinder_return.dart';
 import 'package:lpg_station/models/dispatch_cylinder_validation_result.dart';
 import 'package:lpg_station/models/receive_model.dart';
+import 'package:lpg_station/models/return_summary_model.dart';
 import 'package:lpg_station/models/sale_model.dart';
+import 'package:lpg_station/models/sale_summary_model.dart';
 import 'package:lpg_station/services/auth_service.dart';
 
 class ApiService {
   //static const String _baseUrl = 'https://10.0.2.2:7179/api/LpgMobile';
-  static const String _baseUrl =
-      'https://luqman-staging.lqadmin.com/api/LpgMobile';
+  static const String _baseUrl = 'https://lqadmin.com/api/LpgMobile';
   //static const String _baseUrl = 'https://lqadmin.com/api/LpgMobile';
 
   static const String _apiKey =
@@ -343,5 +345,188 @@ class ApiService {
         message: 'Validation error: $e',
       );
     }
+  }
+
+  // Get sale summary grouped by cylinders and accessories
+  static Future<SaleSummaryResponse> getItemsSaleSummary({
+    required int stationId,
+    required DateTime saleDate,
+  }) async {
+    final formattedDate =
+        '${saleDate.year}-${saleDate.month.toString().padLeft(2, '0')}-${saleDate.day.toString().padLeft(2, '0')}';
+
+    final response = await http.get(
+      Uri.parse(
+        '$_baseUrl/GetItemsSaleSummary?stationId=$stationId&saleDate=$formattedDate',
+      ),
+      headers: _headers,
+    );
+
+    log('getItemsSaleSummary: ${response.statusCode} body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      return SaleSummaryResponse.fromJson(data);
+    } else {
+      throw Exception('Failed to load sale summary: ${response.body}');
+    }
+  }
+
+  static Future<ReturnSummaryResponse> getReturnSummary({
+    required int stationId,
+    required DateTime returnDate,
+  }) async {
+    final formattedDate =
+        '${returnDate.year}-${returnDate.month.toString().padLeft(2, '0')}-${returnDate.day.toString().padLeft(2, '0')}';
+
+    final response = await http.get(
+      Uri.parse(
+        '$_baseUrl/GetReturnSummary?stationId=$stationId&returnDate=$formattedDate',
+      ),
+      headers: _headers,
+    );
+
+    log('getReturnSummary: ${response.statusCode} body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      return ReturnSummaryResponse.fromJson(data);
+    } else {
+      throw Exception('Failed to load return summary: ${response.body}');
+    }
+  }
+
+  static Future<List<CylinderReturn>> fetchPendingReturns({
+    int? stationId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/GetPendingStationReturns'),
+      headers: _headers,
+    );
+
+    log('fetchPendingReturns: ${response.statusCode} body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      final returns = data
+          .map((e) => CylinderReturn.fromJson(e as Map<String, dynamic>))
+          .toList();
+      // Client-side station filter if provided
+      if (stationId != null) {
+        return returns.where((r) => r.stationId == stationId).toList();
+      }
+      return returns;
+    } else {
+      throw Exception('Failed to load pending returns: ${response.body}');
+    }
+  }
+
+  static Future<List<CylinderReturn>> fetchCompletedReturns({
+    int? stationId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/GetCompletedStationReturns'),
+      headers: _headers,
+    );
+
+    log('fetchCompletedReturns: ${response.statusCode} body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      final returns = data
+          .map((e) => CylinderReturn.fromJson(e as Map<String, dynamic>))
+          .toList();
+      // Client-side station filter if provided
+      if (stationId != null) {
+        return returns.where((r) => r.stationId == stationId).toList();
+      }
+      return returns;
+    } else {
+      throw Exception('Failed to load completed returns: ${response.body}');
+    }
+  }
+
+  // Validate return cylinder
+  static Future<Map<String, dynamic>> validateReturnCylinder({
+    required String barcode,
+    required int stationId,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/ValidateStationReturnCylinder').replace(
+      queryParameters: {'barcode': barcode, 'stationId': stationId.toString()},
+    );
+
+    final response = await http.get(uri, headers: _headers);
+
+    log(
+      'validateReturnCylinder: ${response.statusCode} body: ${response.body}',
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    }
+
+    // Surface the server message to the UI as the error text
+    String message;
+    try {
+      final body = json.decode(response.body);
+      message = body is String
+          ? body
+          : (body['message'] ?? body['Message'] ?? response.body);
+    } catch (_) {
+      message = response.body;
+    }
+
+    throw Exception(message);
+  }
+
+  // Create return
+  static Future<Map<String, dynamic>> createStationReturn(
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/PostCylinderReturn'),
+      headers: _headers,
+      body: jsonEncode(payload),
+    );
+
+    // log('STATUS: ${response.statusCode}');
+    // log('BODY: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception(
+        'Refill failed (${response.statusCode}): ${response.body}',
+      );
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getItemsToReturnPerCustomer({
+    required int customerId,
+    required int stationId,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/GetItemsToReturnPerCustomer').replace(
+      queryParameters: {
+        'customerId': customerId.toString(),
+        'stationId': stationId.toString(),
+      },
+    );
+
+    final response = await http.get(uri, headers: _headers);
+
+    if (response.statusCode == 200) {
+      final list = json.decode(response.body) as List;
+      return list
+          .map(
+            (e) => {
+              'LubId': (e['lubId'] ?? e['LubId']) as int,
+              'LubName': (e['lubName'] ?? e['LubName']) as String,
+              'Quantity': (e['quantity'] ?? e['Quantity']) as int,
+            },
+          )
+          .toList();
+    }
+
+    throw Exception('Failed to load items to return: ${response.body}');
   }
 }

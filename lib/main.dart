@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lpg_station/screens/login.dart';
 import 'package:lpg_station/screens/profile.dart';
+import 'package:lpg_station/screens/return_container.dart';
 import 'package:lpg_station/screens/sale_container.dart';
 import 'package:lpg_station/screens/splash_screen.dart';
 import 'package:lpg_station/screens/store_container.dart';
@@ -70,7 +71,7 @@ class _MainLayoutState extends State<MainLayout> {
     screens = [
       const Text('Delivery'),
       const StockTabsContainer(),
-      const Text('Returns'),
+      const ReturnContainer(),
       const SaleContainer(),
       const SummaryTabsContainer(),
       const ProfileScreen(),
