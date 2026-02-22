@@ -25,7 +25,7 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  // HttpOverrides.global = MyHttpOverrides();
+  HttpOverrides.global = MyHttpOverrides();
   runApp(const MyApp());
 }
 

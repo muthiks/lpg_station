@@ -10,8 +10,8 @@ import 'package:lpg_station/models/sale_summary_model.dart';
 import 'package:lpg_station/services/auth_service.dart';
 
 class ApiService {
-  //static const String _baseUrl = 'https://10.0.2.2:7179/api/LpgMobile';
-  static const String _baseUrl = 'https://lqadmin.com/api/LpgMobile';
+  static const String _baseUrl = 'https://10.0.2.2:7179/api/LpgMobile';
+  // static const String _baseUrl = 'https://lqadmin.com/api/LpgMobile';
   //static const String _baseUrl = 'https://lqadmin.com/api/LpgMobile';
 
   static const String _apiKey =
@@ -484,7 +484,7 @@ class ApiService {
     Map<String, dynamic> payload,
   ) async {
     final response = await http.post(
-      Uri.parse('$_baseUrl/PostCylinderReturn'),
+      Uri.parse('$_baseUrl/PostStationCylinderReturn'),
       headers: _headers,
       body: jsonEncode(payload),
     );

@@ -16,8 +16,8 @@ class AuthService {
   // ------------------------
   // API
   // ------------------------
-  //static const String _baseUrl = 'https://10.0.2.2:7179/api/Account';
-  static const String _baseUrl = 'https://lqadmin.com/api/Account';
+  static const String _baseUrl = 'https://10.0.2.2:7179/api/Account';
+  //static const String _baseUrl = 'https://lqadmin.com/api/Account';
 
   factory AuthService() {
     return instance;

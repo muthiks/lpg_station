@@ -1324,7 +1324,7 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
             // ── Total-to-return badge ──────────────────────────────────
             SizedBox(
               width: 72,
-              height: 72,
+              height: 55,
               child: Container(
                 decoration: BoxDecoration(
                   color: AppTheme.primaryOrange,
@@ -1337,7 +1337,7 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
                       '$maxQty',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 22,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
