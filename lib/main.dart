@@ -229,7 +229,7 @@ class _MainLayoutState extends State<MainLayout> {
                       shape: BoxShape.circle,
                     ),
                     child: const Text(
-                      '3',
+                      '0',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 10,
