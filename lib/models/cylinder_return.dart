@@ -7,6 +7,7 @@ class CylinderReturn {
   final String stationName;
   final String status;
   final String returnType;
+  final String addedBy;
   final List<ReturnCylinderInfo> cylinders;
 
   CylinderReturn({
@@ -18,6 +19,7 @@ class CylinderReturn {
     required this.stationName,
     required this.status,
     required this.returnType,
+    required this.addedBy,
     required this.cylinders,
   });
 
@@ -31,6 +33,7 @@ class CylinderReturn {
       stationName: json['StationName'] as String? ?? '',
       status: json['Status'] as String? ?? '',
       returnType: json['ReturnType'] as String? ?? '',
+      addedBy: json['AddedBy'] as String? ?? '',
       cylinders: (json['Cylinders'] as List<dynamic>? ?? [])
           .map((c) => ReturnCylinderInfo.fromJson(c as Map<String, dynamic>))
           .toList(),
@@ -50,6 +53,20 @@ class CylinderReturn {
       'Cylinders': cylinders.map((c) => c.toJson()).toList(),
     };
   }
+
+  /// Derive next status in the pipeline
+  String? get nextStatus {
+    switch (status) {
+      case 'New':
+        return 'Received';
+      case 'Received':
+        return 'Approved';
+      default:
+        return null; // Approved has no next
+    }
+  }
+
+  bool get isEditable => status == 'New';
 }
 
 class ReturnCylinderInfo {
