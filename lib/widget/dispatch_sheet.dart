@@ -136,9 +136,18 @@ class _DispatchSheetState extends State<DispatchSheet> {
     if (barcode.isEmpty) return;
     setState(() => _scanError = null);
 
+    log('Processing barcode: $barcode');
+
+    // ── Check for duplicate barcode across ALL cylinder types ─────────────
     for (final group in _scanned.values) {
+      log('Checking group ${group.lubName}: ${group.barcodes}');
       if (group.barcodes.contains(barcode)) {
-        setState(() => _scanError = 'Barcode "$barcode" already scanned');
+        log('DUPLICATE FOUND: $barcode already in ${group.lubName}');
+        setState(
+          () => _scanError =
+              'Duplicate! "$barcode" already scanned in ${group.lubName}',
+        );
+        // Optional: Play error sound here if you want audio feedback
         return;
       }
     }
@@ -155,7 +164,7 @@ class _DispatchSheetState extends State<DispatchSheet> {
         return;
       }
 
-      // Null safety - check cylinderID is returned
+      // Null safety - check lubId is returned
       if (result.lubId == null) {
         setState(
           () => _scanError = 'Invalid response from server (no cylinder ID)',
@@ -164,6 +173,9 @@ class _DispatchSheetState extends State<DispatchSheet> {
       }
 
       final cylID = result.lubId!;
+      log('Valid barcode: $barcode for cylID: $cylID');
+
+      // Check this type's tagged count won't exceed max
       final already = _scannedCount(cylID);
       final max = _maxTagged(cylID);
       if (already >= max) {
@@ -174,6 +186,7 @@ class _DispatchSheetState extends State<DispatchSheet> {
         return;
       }
 
+      // Add barcode to the appropriate cylinder group
       setState(() {
         _scanned
             .putIfAbsent(
@@ -186,6 +199,8 @@ class _DispatchSheetState extends State<DispatchSheet> {
             .barcodes
             .add(barcode);
       });
+
+      log('Barcode added successfully. Total scanned: $_totalScanned');
     } catch (e) {
       log('Scan error: $e');
       setState(() => _scanError = 'Validation error: $e');

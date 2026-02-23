@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lpg_station/screens/delivery_list.dart';
 import 'package:lpg_station/screens/login.dart';
+import 'package:lpg_station/screens/notification_list.dart';
 import 'package:lpg_station/screens/profile.dart';
 import 'package:lpg_station/screens/return_container.dart';
 import 'package:lpg_station/screens/sale_container.dart';
@@ -12,21 +13,19 @@ import 'package:lpg_station/screens/store_container.dart';
 import 'package:lpg_station/screens/summary_container.dart';
 import 'package:lpg_station/services/auth_gate.dart';
 import 'package:lpg_station/services/auth_service.dart';
+import 'package:lpg_station/services/notification_service.dart';
 import 'package:lpg_station/services/role_config.dart';
 import 'package:lpg_station/theme/theme.dart';
 import 'package:lpg_station/widget/gradient_scaffold.dart';
 
 void main() async {
-  // ✅ Ensure Flutter binding is initialized
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ✅ Lock orientation to portrait only
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  //  HttpOverrides.global = MyHttpOverrides();
   runApp(const MyApp());
 }
 
@@ -38,9 +37,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       theme: primaryTheme,
       debugShowCheckedModeBanner: false,
-      // ✅ Set splash as initial route
       initialRoute: '/',
-      // ✅ Define named routes
       routes: {
         '/': (context) => const SplashScreen(),
         '/auth': (context) => const AuthGate(),
@@ -51,7 +48,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// 🔥 ROOT LAYOUT — ONLY PLACE GradientScaffold IS USED
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
 
@@ -66,6 +62,8 @@ class _MainLayoutState extends State<MainLayout> {
   late List<Widget> accessibleNavItems;
   late List<int> accessibleIndices;
 
+  final NotificationService _notificationService = NotificationService();
+
   @override
   void initState() {
     super.initState();
@@ -78,34 +76,40 @@ class _MainLayoutState extends State<MainLayout> {
       const ProfileScreen(),
     ];
 
-    // Get user role
     final userRole = AuthService.instance.userRole;
-    // log('ROLE: $userRole');
-
-    // Get accessible page indices for this role
     accessibleIndices = RoleConfig.getAccessiblePages(userRole);
-
-    // Build accessible screens based on role
     accessibleScreens = accessibleIndices
         .map((index) => screens[index])
         .toList();
 
-    // Set default selected page based on role
     final defaultPage = RoleConfig.getDefaultPage(userRole);
     selectedIndex = accessibleIndices.indexOf(defaultPage);
 
-    // If default page not accessible, use first accessible page
     if (selectedIndex == -1) {
       selectedIndex = 0;
     }
+
+    // ── Start notification polling ────────────────────────────────────────
+    _notificationService.startPolling();
+    _notificationService.addListener(_onNotificationUpdate);
   }
 
-  /// 🔹 Centralized navigation method
+  @override
+  void dispose() {
+    _notificationService.removeListener(_onNotificationUpdate);
+    _notificationService.stopPolling();
+    super.dispose();
+  }
+
+  void _onNotificationUpdate() {
+    if (mounted) {
+      setState(() {}); // Rebuild to update notification badge
+    }
+  }
+
   void navigateToIndex(int index) {
-    // Check if user has access to this page
     final userRole = AuthService.instance.userRole;
     if (!RoleConfig.hasAccessToPage(userRole, index)) {
-      // Show access denied message
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('You do not have access to this page'),
@@ -115,7 +119,6 @@ class _MainLayoutState extends State<MainLayout> {
       return;
     }
 
-    // Convert original index to accessible index
     final accessibleIndex = accessibleIndices.indexOf(index);
     if (accessibleIndex != -1) {
       setState(() {
@@ -160,11 +163,9 @@ class _MainLayoutState extends State<MainLayout> {
       const Icon(Icons.download_sharp, size: 25),
       const Icon(Icons.shopping_cart_checkout_sharp, size: 25),
       const Icon(Icons.bar_chart_sharp, size: 25),
-      // const Icon(Icons.account_balance_wallet_sharp, size: 25),
       const Icon(Icons.person_2_sharp, size: 25),
     ];
 
-    // Build accessible nav items based on role
     final accessibleNavItems = accessibleIndices
         .map((index) => items[index])
         .toList();
@@ -204,45 +205,65 @@ class _MainLayoutState extends State<MainLayout> {
           ],
         ),
         actions: [
-          // 🔔 Notification with badge
-          SizedBox(
-            width: 48,
-            child: Stack(
-              alignment: Alignment.topRight,
-              children: [
-                IconButton(
-                  icon: const Icon(
-                    Icons.notifications_outlined,
-                    color: Colors.white,
-                  ),
-                  onPressed: () {
-                    // open notifications
-                  },
-                ),
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
+          // ── Notification Bell (only show if there are notifications) ──────
+          if (_notificationService.unreadCount > 0)
+            SizedBox(
+              width: 48,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(
+                      Icons.notifications,
+                      color: Colors.white,
+                      size: 26,
                     ),
-                    child: const Text(
-                      '0',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const NotificationListScreen(),
+                        ),
+                      ).then((_) {
+                        // Refresh count after returning from notification screen
+                        _notificationService.fetchUnreadCount();
+                      });
+                    },
+                  ),
+                  Positioned(
+                    right: 6,
+                    top: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 18,
+                        minHeight: 18,
+                      ),
+                      child: Text(
+                        _notificationService.unreadCount > 99
+                            ? '99+'
+                            : '${_notificationService.unreadCount}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
-          // 🚪 Logout
+          // ── Logout Button ──────────────────────────────────────────────────
           SizedBox(
             width: 48,
             child: IconButton(
@@ -254,16 +275,16 @@ class _MainLayoutState extends State<MainLayout> {
 
                 await AuthService.instance.logout();
 
-                // ✅ Navigate to splash/auth using named route
-                Navigator.of(
-                  context,
-                ).pushNamedAndRemoveUntil('/auth', (route) => false);
+                if (mounted) {
+                  Navigator.of(
+                    context,
+                  ).pushNamedAndRemoveUntil('/auth', (route) => false);
+                }
               },
             ),
           ),
         ],
       ),
-
       body: accessibleScreens[selectedIndex],
       navigationBar: SafeArea(
         bottom: true,
