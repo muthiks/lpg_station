@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer';
 
 import 'package:http/http.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,8 +15,9 @@ class AuthService {
   // ------------------------
   // API
   // ------------------------
-  static const String _baseUrl = 'https://10.0.2.2:7179/api/Account';
-  //static const String _baseUrl = 'https://lqadmin.com/api/Account';
+  //static const String _baseUrl = 'https://10.0.2.2:7179/api/Account';
+  static const String _baseUrl =
+      'https://luqman-staging.lqadmin.com/api/Account';
 
   factory AuthService() {
     return instance;
@@ -68,12 +68,12 @@ class AuthService {
         body: body,
         headers: {"content-type": "application/json"},
       );
-      log('STATUS: ${response.statusCode}');
-      log('BODY: ${response.body}');
+      // log('STATUS: ${response.statusCode}');
+      // log('BODY: ${response.body}');
 
       final responseData = jsonDecode(response.body) as Map<String, dynamic>;
 
-      log('STATUS: $responseData');
+      // log('STATUS: $responseData');
 
       if (responseData.toString().contains('token')) {
         _token = responseData['token'];

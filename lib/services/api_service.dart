@@ -10,8 +10,9 @@ import 'package:lpg_station/models/sale_summary_model.dart';
 import 'package:lpg_station/services/auth_service.dart';
 
 class ApiService {
-  static const String _baseUrl = 'https://10.0.2.2:7179/api/LpgMobile';
-  // static const String _baseUrl = 'https://lqadmin.com/api/LpgMobile';
+  // static const String _baseUrl = 'https://10.0.2.2:7179/api/LpgMobile';
+  static const String _baseUrl =
+      'https://luqman-staging.lqadmin.com/api/LpgMobile';
   //static const String _baseUrl = 'https://lqadmin.com/api/LpgMobile';
 
   static const String _apiKey =
@@ -145,6 +146,22 @@ class ApiService {
     }
   }
 
+  // Get sales list (optionally filtered by station)
+  static Future<List<SaleDto>> getDriverDeliveries() async {
+    String url = '$_baseUrl/GetDriverDeliveries';
+
+    final response = await http.get(Uri.parse(url), headers: _headers);
+    // log('STATUS: ${response.statusCode}');
+    // log('BODY: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      return data.map((json) => SaleDto.fromJson(json)).toList();
+    } else {
+      throw Exception('Failed to load deliveries');
+    }
+  }
+
   // Update sale status (Draft → Confirmed → Dispatched → Delivered)
   static Future<void> updateSaleStatus(int saleId, String newStatus) async {
     try {
@@ -155,7 +172,7 @@ class ApiService {
         headers: _headers,
       );
 
-      log('updateSaleStatus: ${response.statusCode} body: ${response.body}');
+      // log('updateSaleStatus: ${response.statusCode} body: ${response.body}');
 
       if (response.statusCode != 200) {
         throw Exception('Failed to update status: \${response.body}');
@@ -203,7 +220,7 @@ class ApiService {
         body: jsonEncode(data), // Just send the string directly
       );
 
-      log('createSale status: ${response.statusCode} body: ${response.body}');
+      // log('createSale status: ${response.statusCode} body: ${response.body}');
       if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception('Failed to create sale: ${response.body}');
       }
@@ -233,7 +250,7 @@ class ApiService {
         body: jsonEncode(payload), // Just send the string directly
       );
 
-      log('updateSale status: ${response.statusCode} body: ${response.body}');
+      // log('updateSale status: ${response.statusCode} body: ${response.body}');
       if (response.statusCode != 200 && response.statusCode != 204) {
         throw Exception('Failed to update sale: ${response.body}');
       }
@@ -279,7 +296,7 @@ class ApiService {
         body: jsonEncode(payload), // Just send the string directly
       );
 
-      log('dispatchSale: ${response.statusCode} body: ${response.body}');
+      // log('dispatchSale: ${response.statusCode} body: ${response.body}');
       if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception('Failed to dispatch: ${response.body}');
       }
@@ -319,21 +336,34 @@ class ApiService {
       final data = json.decode(response.body) as Map<String, dynamic>;
       final isValid = data['isValid'] ?? data['IsValid'] ?? false;
       final message = data['message'] ?? data['Message'] ?? '';
-      final cylID = data['lubId'] ?? data['LubId'];
-      final lubName = data['lubName'] ?? data['LubName'] ?? '';
 
       if (isValid == false) {
         return CylinderValidationResult(isValid: false, message: message);
       }
-      // Server already validated LubId — trust the response
+
+      // Parse the nested Data field (contains cylinderID and lubName as JSON string)
+      int? lubId;
+      String? lubName;
+
+      final dataField = data['data'] ?? data['Data'];
+      if (dataField != null && dataField is String) {
+        try {
+          final nested = json.decode(dataField) as Map<String, dynamic>;
+          lubId = nested['cylinderID'] ?? nested['CylinderID'];
+          lubName = nested['lubName'] ?? nested['LubName'];
+        } catch (e) {
+          log('Error parsing Data field: $e');
+        }
+      }
+
       return CylinderValidationResult(
         isValid: true,
         message: '',
-        lubId: cylID as int?,
-        lubName: lubName,
+        lubId: lubId,
+        lubName: lubName ?? 'Cylinder',
       );
     } catch (e) {
-      log('Error validating cylinder: $e');
+      // log('Error validating cylinder: $e');
       return CylinderValidationResult(
         isValid: false,
         message: 'Validation error: $e',
@@ -356,7 +386,7 @@ class ApiService {
       headers: _headers,
     );
 
-    log('getItemsSaleSummary: ${response.statusCode} body: ${response.body}');
+    // log('getItemsSaleSummary: ${response.statusCode} body: ${response.body}');
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body) as Map<String, dynamic>;
@@ -398,7 +428,7 @@ class ApiService {
       headers: _headers,
     );
 
-    log('fetchPendingReturns: ${response.statusCode} body: ${response.body}');
+    // log('fetchPendingReturns: ${response.statusCode} body: ${response.body}');
 
     if (response.statusCode == 200) {
       final List<dynamic> data = json.decode(response.body);
@@ -423,7 +453,7 @@ class ApiService {
       headers: _headers,
     );
 
-    log('fetchCompletedReturns: ${response.statusCode} body: ${response.body}');
+    // log('fetchCompletedReturns: ${response.statusCode} body: ${response.body}');
 
     if (response.statusCode == 200) {
       final List<dynamic> data = json.decode(response.body);
@@ -451,9 +481,9 @@ class ApiService {
 
     final response = await http.get(uri, headers: _headers);
 
-    log(
-      'validateReturnCylinder: ${response.statusCode} body: ${response.body}',
-    );
+    // log(
+    //   'validateReturnCylinder: ${response.statusCode} body: ${response.body}',
+    // );
 
     if (response.statusCode == 200) {
       return json.decode(response.body) as Map<String, dynamic>;
@@ -490,7 +520,7 @@ class ApiService {
       return jsonDecode(response.body) as Map<String, dynamic>;
     } else {
       throw Exception(
-        'Refill failed (${response.statusCode}): ${response.body}',
+        'Return failed (${response.statusCode}): ${response.body}',
       );
     }
   }

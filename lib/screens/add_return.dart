@@ -48,13 +48,10 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
   // ───────────────── DROPDOWNS ─────────────────
   bool _isLoadingStations = true;
   bool _isLoadingCustomers = false;
-  bool _isLoadingLubricants = false;
   bool _isCreatingReturn = false;
 
   List<StationDto> _stations = [];
   List<CustomerDto> _customers = [];
-  // All lubricants for untagged selection: {LubId, LubName}
-  List<Map<String, dynamic>> _lubricants = [];
 
   StationDto? _selectedStation;
   CustomerDto? _selectedCustomer;
@@ -129,8 +126,6 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
         _customers = customers;
         _isLoadingCustomers = false;
       });
-      // If station was auto-selected + customer auto-matched, load items
-      if (_selectedCustomer != null) _loadItemsToReturn();
     } catch (e) {
       setState(() => _isLoadingCustomers = false);
       _showSnack('Failed to load customers: $e', isError: true);
@@ -147,25 +142,40 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
       _untaggedQtyControllers.clear();
     });
     try {
+      log(
+        '[ItemsToReturn] customerId=${_selectedCustomer!.customerID}'
+        ' stationId=${_selectedStation!.stationID}',
+      );
       final items = await ApiService.getItemsToReturnPerCustomer(
         customerId: _selectedCustomer!.customerID,
         stationId: _selectedStation!.stationID,
       );
+      log('[ItemsToReturn] response count: ${items.length}');
+      // Log raw first item so we can see exact key casing from API
+      if (items.isNotEmpty)
+        log('[ItemsToReturn] first item keys: ${items.first.keys.toList()}');
+
       setState(() {
         _itemsToReturn = items;
         _isLoadingItemsToReturn = false;
-        // Pre-populate lubNames + create qty controllers for each item
         for (final item in items) {
-          final lubId = item['LubId'] as int;
-          final lubName = item['LubName'] as String;
+          // Handle both PascalCase and camelCase from API
+          final lubId =
+              (item['LubId'] ?? item['lubId'] ?? item['lubID']) as int;
+          final lubName =
+              (item['LubName'] ?? item['lubName'] ?? item['lubname']) as String;
           _lubNames[lubId] = lubName;
           _untaggedQtyControllers[lubId] = TextEditingController();
         }
       });
-    } catch (e) {
+    } catch (e, stack) {
       setState(() => _isLoadingItemsToReturn = false);
       log('Error loading items to return: $e');
-      _showSnack('Failed to load return items: $e', isError: true);
+      log('Stack: $stack');
+      _showSnack(
+        'Failed to load return items: ${e.toString().replaceAll("Exception: ", "")}',
+        isError: true,
+      );
     }
   }
 
@@ -412,15 +422,11 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
   }
 
   Map<String, dynamic> _buildPayload() {
-    final Map<int, List<String>> taggedByLub = {};
+    // Server expects one object per barcode: { LubId, VirtualSerial }
+    final taggedArray = <Map<String, dynamic>>[];
     _scannedBarcodes.forEach((barcode, lubId) {
-      taggedByLub[lubId] ??= [];
-      taggedByLub[lubId]!.add(barcode);
+      taggedArray.add({'LubId': lubId, 'VirtualSerial': barcode});
     });
-
-    final taggedArray = taggedByLub.entries
-        .map((e) => {'LubId': e.key, 'Barcodes': e.value})
-        .toList();
 
     final untaggedArray = <Map<String, dynamic>>[];
     _untaggedQtyControllers.forEach((lubId, ctrl) {
@@ -603,6 +609,12 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
                       onTap: () {
                         setState(() => _selectedCustomer = c);
                         Navigator.pop(ctx);
+                        // _selectedStation and _selectedCustomer are
+                        // both set before this call
+                        log(
+                          '[CustomerSelect] customer=${c.customerID}'
+                          ' station=${_selectedStation?.stationID}',
+                        );
                         _loadItemsToReturn();
                         _returnFocusToScanner();
                       },
@@ -621,11 +633,9 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
 
   void _showAddCylinderTypeDialog() {
     // Available = all lubricants not already added to untagged list
-    final available = _lubricants
-        .where((e) => !_untaggedQtyControllers.containsKey(e['LubId'] as int))
-        .toList();
+    final available = <Map<String, dynamic>>[];
 
-    if (available.isEmpty && _lubricants.isEmpty) {
+    if (available.isEmpty) {
       _showSnack('Loading cylinder types, please wait...', isError: true);
       return;
     }
@@ -1324,7 +1334,7 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
             // ── Total-to-return badge ──────────────────────────────────
             SizedBox(
               width: 72,
-              height: 55,
+              height: 72,
               child: Container(
                 decoration: BoxDecoration(
                   color: AppTheme.primaryOrange,
@@ -1337,7 +1347,7 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
                       '$maxQty',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 18,
+                        fontSize: 22,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

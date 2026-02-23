@@ -22,7 +22,7 @@ class DispatchSheet extends StatefulWidget {
 class _DispatchSheetState extends State<DispatchSheet> {
   String? _mode;
   bool _useCameraScanner = true;
-  bool _scannerActive = false;
+  bool _scannerActive = true; // Auto-start by default
 
   final FocusNode _scanFocus = FocusNode();
   final TextEditingController _scanController = TextEditingController();
@@ -62,20 +62,14 @@ class _DispatchSheetState extends State<DispatchSheet> {
   bool get _canDispatch {
     switch (_mode) {
       case 'NonTagged':
-        // All quantities must be entered
-        for (final d in _cylDetails) {
-          final untagged =
-              int.tryParse(_untaggedControllers[d.cylinderID]?.text ?? '0') ??
-              0;
-          if (untagged != d.quantity) return false;
-        }
+        // NonTagged has no restrictions - always enabled
         return true;
 
       case 'Tagged':
         return _allTaggedComplete;
 
       case 'Both':
-        // Both requires: total correct AND at least 1 tagged AND at least 1 untagged per type
+        // Both requires: total correct AND at least 1 tagged AND at least 1 untagged
         bool hasAtLeastOneTagged = false;
         bool hasAtLeastOneUntagged = false;
 
@@ -103,25 +97,6 @@ class _DispatchSheetState extends State<DispatchSheet> {
     super.initState();
     for (final d in _cylDetails) {
       _untaggedControllers[d.cylinderID] = TextEditingController(text: '0');
-    }
-  }
-
-  @override
-  void didUpdateWidget(DispatchSheet oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Auto-start scanner when mode is selected (Tagged or Both)
-    if (_mode != null && _mode != 'NonTagged' && !_scannerActive) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_scannerActive) {
-          setState(() => _scannerActive = true);
-          if (!_useCameraScanner) {
-            Future.delayed(
-              const Duration(milliseconds: 100),
-              () => FocusScope.of(context).requestFocus(_scanFocus),
-            );
-          }
-        }
-      });
     }
   }
 
@@ -177,6 +152,14 @@ class _DispatchSheetState extends State<DispatchSheet> {
 
       if (!result.isValid) {
         setState(() => _scanError = result.message);
+        return;
+      }
+
+      // Null safety - check cylinderID is returned
+      if (result.lubId == null) {
+        setState(
+          () => _scanError = 'Invalid response from server (no cylinder ID)',
+        );
         return;
       }
 

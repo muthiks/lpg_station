@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lpg_station/screens/delivery_list.dart';
 import 'package:lpg_station/screens/login.dart';
 import 'package:lpg_station/screens/profile.dart';
 import 'package:lpg_station/screens/return_container.dart';
@@ -25,7 +26,7 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  HttpOverrides.global = MyHttpOverrides();
+  //  HttpOverrides.global = MyHttpOverrides();
   runApp(const MyApp());
 }
 
@@ -69,7 +70,7 @@ class _MainLayoutState extends State<MainLayout> {
   void initState() {
     super.initState();
     screens = [
-      const Text('Delivery'),
+      const DeliveryList(),
       const StockTabsContainer(),
       const ReturnContainer(),
       const SaleContainer(),

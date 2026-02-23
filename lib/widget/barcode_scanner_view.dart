@@ -46,6 +46,7 @@ class _BarcodeScannerViewState extends State<BarcodeScannerView> {
     detectionSpeed: DetectionSpeed.noDuplicates,
     facing: CameraFacing.back,
     torchEnabled: false,
+    autoStart: true,
   );
 
   bool _torchOn = false;
