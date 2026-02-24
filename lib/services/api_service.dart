@@ -420,55 +420,55 @@ class ApiService {
     }
   }
 
-  // static Future<List<CylinderReturn>> fetchPendingReturns({
-  //   int? stationId,
-  // }) async {
-  //   final response = await http.get(
-  //     Uri.parse('$_baseUrl/GetPendingStationReturns'),
-  //     headers: _headers,
-  //   );
+  static Future<List<CylinderReturn>> fetchPendingReturns({
+    int? stationId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/GetPendingStationReturns'),
+      headers: _headers,
+    );
 
-  //   // log('fetchPendingReturns: ${response.statusCode} body: ${response.body}');
+    log('fetchPendingReturns: ${response.statusCode} body: ${response.body}');
 
-  //   if (response.statusCode == 200) {
-  //     final List<dynamic> data = json.decode(response.body);
-  //     final returns = data
-  //         .map((e) => CylinderReturn.fromJson(e as Map<String, dynamic>))
-  //         .toList();
-  //     // Client-side station filter if provided
-  //     if (stationId != null) {
-  //       return returns.where((r) => r.stationId == stationId).toList();
-  //     }
-  //     return returns;
-  //   } else {
-  //     throw Exception('Failed to load pending returns: ${response.body}');
-  //   }
-  // }
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      final returns = data
+          .map((e) => CylinderReturn.fromJson(e as Map<String, dynamic>))
+          .toList();
+      // Client-side station filter if provided
+      if (stationId != null) {
+        return returns.where((r) => r.stationId == stationId).toList();
+      }
+      return returns;
+    } else {
+      throw Exception('Failed to load pending returns: ${response.body}');
+    }
+  }
 
-  // static Future<List<CylinderReturn>> fetchCompletedReturns({
-  //   int? stationId,
-  // }) async {
-  //   final response = await http.get(
-  //     Uri.parse('$_baseUrl/GetCompletedStationReturns'),
-  //     headers: _headers,
-  //   );
+  static Future<List<CylinderReturn>> fetchCompletedReturns({
+    int? stationId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/GetCompletedStationReturns'),
+      headers: _headers,
+    );
 
-  //   // log('fetchCompletedReturns: ${response.statusCode} body: ${response.body}');
+    log('fetchCompletedReturns: ${response.statusCode} body: ${response.body}');
 
-  //   if (response.statusCode == 200) {
-  //     final List<dynamic> data = json.decode(response.body);
-  //     final returns = data
-  //         .map((e) => CylinderReturn.fromJson(e as Map<String, dynamic>))
-  //         .toList();
-  //     // Client-side station filter if provided
-  //     if (stationId != null) {
-  //       return returns.where((r) => r.stationId == stationId).toList();
-  //     }
-  //     return returns;
-  //   } else {
-  //     throw Exception('Failed to load completed returns: ${response.body}');
-  //   }
-  // }
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      final returns = data
+          .map((e) => CylinderReturn.fromJson(e as Map<String, dynamic>))
+          .toList();
+      // Client-side station filter if provided
+      if (stationId != null) {
+        return returns.where((r) => r.stationId == stationId).toList();
+      }
+      return returns;
+    } else {
+      throw Exception('Failed to load completed returns: ${response.body}');
+    }
+  }
 
   // Fetch all returns (New + Received + Approved in one call)
   static Future<List<CylinderReturn>> fetchAllReturns({int? stationId}) async {
@@ -595,5 +595,40 @@ class ApiService {
     }
 
     throw Exception('Failed to load items to return: ${response.body}');
+  }
+
+  /// Fetch full return details for edit mode pre-fill.
+  /// Returns tagged barcodes + untagged quantities.
+  static Future<Map<String, dynamic>> getReturnDetails({
+    required int returnId,
+  }) async {
+    final uri = Uri.parse(
+      '$_baseUrl/GetReturnDetails',
+    ).replace(queryParameters: {'returnId': returnId.toString()});
+    final response = await http.get(uri, headers: _headers);
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Failed to load return details: ${response.body}');
+  }
+
+  /// Update an existing return (New status only).
+  static Future<void> updateStationReturn({
+    required int returnId,
+    required Map<String, dynamic> payload,
+  }) async {
+    final uri = Uri.parse(
+      '$_baseUrl/UpdateStationCylinderReturn',
+    ).replace(queryParameters: {'returnId': returnId.toString()});
+    final response = await http.put(
+      uri,
+      headers: {..._headers, 'Content-Type': 'application/json'},
+      body: json.encode(payload),
+    );
+    if (response.statusCode != 200) {
+      final body = json.decode(response.body);
+      final msg = body['message'] ?? body['Message'] ?? response.body;
+      throw Exception(msg);
+    }
   }
 }

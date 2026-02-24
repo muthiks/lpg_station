@@ -4,6 +4,7 @@ import 'dart:developer';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lpg_station/models/cylinder_return.dart';
 import 'package:lpg_station/models/sale_model.dart';
 import 'package:lpg_station/services/api_service.dart';
 import 'package:lpg_station/services/auth_service.dart';
@@ -12,7 +13,11 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 class ReturnAddScreen extends StatefulWidget {
   final VoidCallback onBack;
-  const ReturnAddScreen({super.key, required this.onBack});
+  final CylinderReturn? existingReturn;
+
+  const ReturnAddScreen({super.key, required this.onBack, this.existingReturn});
+
+  bool get isEditMode => existingReturn != null;
 
   @override
   State<ReturnAddScreen> createState() => _ReturnAddScreenState();
@@ -69,6 +74,10 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
   // lubId -> TextEditingController  (only for not-tagged / both)
   // (reuses _untaggedQtyControllers — no separate map needed)
 
+  // ───────────────── EDIT MODE ─────────────────
+  bool _isLoadingEditData = false;
+  final Map<int, int> _pendingUntaggedQtys = {};
+
   @override
   void initState() {
     super.initState();
@@ -77,6 +86,7 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
     _searchController.addListener(_applySearch);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_userIsTyping) FocusScope.of(context).requestFocus(_focusNode);
+      if (widget.isEditMode) _loadEditData();
     });
   }
 
@@ -168,6 +178,8 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
           _untaggedQtyControllers[lubId] = TextEditingController();
         }
       });
+      // In edit mode fill in previously saved untagged quantities
+      if (widget.isEditMode) _applyPendingUntaggedQtys();
     } catch (e, stack) {
       setState(() => _isLoadingItemsToReturn = false);
       log('Error loading items to return: $e');
@@ -177,6 +189,57 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
         isError: true,
       );
     }
+  }
+
+  // ═══════════════════════════ EDIT MODE LOADER ══════════════════════════
+
+  Future<void> _loadEditData() async {
+    setState(() => _isLoadingEditData = true);
+    try {
+      final details = await ApiService.getReturnDetails(
+        returnId: widget.existingReturn!.returnId,
+      );
+
+      final returnType = (details['ReturnType'] as String? ?? 'both')
+          .toLowerCase();
+      setState(() => _returnStatus = returnType == 'own' ? 'both' : returnType);
+
+      // Pre-fill tagged barcodes
+      final tagged = (details['Tagged'] as List? ?? []);
+      for (final t in tagged) {
+        final barcode = t['Barcode'] as String;
+        final lubId = (t['LubId'] ?? t['lubId']) as int;
+        final lubName = (t['LubName'] ?? t['lubName']) as String;
+        _scannedBarcodes[barcode] = lubId;
+        _scannedBarcodeLubName[barcode] = lubName;
+        _lubNames[lubId] = lubName;
+      }
+
+      // Store pending untagged qtys — applied after _loadItemsToReturn creates controllers
+      final untagged = (details['Untagged'] as List? ?? []);
+      for (final u in untagged) {
+        final lubId = (u['LubId'] ?? u['lubId']) as int;
+        final qty = (u['UntaggedCount'] ?? u['untaggedCount'] ?? 0) as int;
+        _lubNames[lubId] = (u['LubName'] ?? u['lubName']) as String;
+        _pendingUntaggedQtys[lubId] = qty;
+      }
+
+      setState(() => _isLoadingEditData = false);
+      _applySearch();
+    } catch (e) {
+      setState(() => _isLoadingEditData = false);
+      log('Error loading edit data: \$e');
+      _showSnack('Failed to load return details: \$e', isError: true);
+    }
+  }
+
+  void _applyPendingUntaggedQtys() {
+    if (_pendingUntaggedQtys.isEmpty) return;
+    _pendingUntaggedQtys.forEach((lubId, qty) {
+      _untaggedQtyControllers[lubId]?.text = qty > 0 ? '\$qty' : '';
+    });
+    _pendingUntaggedQtys.clear();
+    setState(() {});
   }
 
   // ═══════════════════════════ SCAN SECURITY ═══════════════════════════
@@ -230,6 +293,29 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
       );
       final lubId = result['LubId'] as int;
       final lubName = result['LubName'] as String;
+
+      // ── Per-LubId qty check against customer's expected return ────────────
+      final item = _itemsToReturn
+          .where((i) => (i['LubId'] ?? i['lubId']) == lubId)
+          .firstOrNull;
+      if (item == null) {
+        await _errorBeep();
+        _showErrorModal(
+          '$lubName is not in the expected return list for this customer.',
+        );
+        return;
+      }
+      final maxQty = (item['Quantity'] ?? item['quantity']) as int;
+      final alreadyScanned = _scannedBarcodes.values
+          .where((id) => id == lubId)
+          .length;
+      if (alreadyScanned >= maxQty) {
+        await _errorBeep();
+        _showErrorModal(
+          'Max $maxQty $lubName cylinder(s) already scanned for this customer.',
+        );
+        return;
+      }
 
       setState(() {
         _scannedBarcodes[barcode] = lubId;
@@ -400,13 +486,23 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
       log(
         'RETURN PAYLOAD:\n${const JsonEncoder.withIndent('  ').convert(payload)}',
       );
-      await ApiService.createStationReturn(payload);
+      if (widget.isEditMode) {
+        await ApiService.updateStationReturn(
+          returnId: widget.existingReturn!.returnId,
+          payload: payload,
+        );
+      } else {
+        await ApiService.createStationReturn(payload);
+      }
       if (mounted) {
+        final msg = widget.isEditMode
+            ? 'Return updated successfully'
+            : 'Return created successfully';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Return created successfully'),
+          SnackBar(
+            content: Text(msg),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 6),
+            duration: const Duration(seconds: 6),
           ),
         );
         widget.onBack();
@@ -777,8 +873,8 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
                       onPressed: _isCreatingReturn ? null : widget.onBack,
                     ),
                     const SizedBox(width: 8),
-                    const Text(
-                      'ADD RETURN',
+                    Text(
+                      widget.isEditMode ? 'EDIT RETURN' : 'ADD RETURN',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
@@ -1041,8 +1137,12 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
                                   ],
                                   Text(
                                     _isCreatingReturn
-                                        ? 'Creating...'
-                                        : 'Create Return',
+                                        ? (widget.isEditMode
+                                              ? 'Updating...'
+                                              : 'Creating...')
+                                        : (widget.isEditMode
+                                              ? 'Update Return'
+                                              : 'Create Return'),
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       color: _isCreatingReturn
@@ -1124,28 +1224,30 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
         ),
 
         // ── Loading overlay ───────────────────────────────────────
-        if (_isCreatingReturn)
+        if (_isCreatingReturn || _isLoadingEditData)
           Container(
             color: Colors.black54,
-            child: const Center(
+            child: Center(
               child: Card(
                 child: Padding(
-                  padding: EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(20),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 16),
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 16),
                       Text(
-                        'Creating return...',
-                        style: TextStyle(
+                        _isLoadingEditData
+                            ? 'Loading return data...'
+                            : 'Creating return...',
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: Colors.black87,
                         ),
                       ),
-                      SizedBox(height: 8),
-                      Text(
+                      const SizedBox(height: 8),
+                      const Text(
                         'Please wait',
                         style: TextStyle(fontSize: 14, color: Colors.black54),
                       ),
