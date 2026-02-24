@@ -194,17 +194,49 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
   // ═══════════════════════════ EDIT MODE LOADER ══════════════════════════
 
   Future<void> _loadEditData() async {
+    final existing = widget.existingReturn!;
     setState(() => _isLoadingEditData = true);
     try {
+      // ── Step 1: ensure stations loaded, then match + select station ──────
+      if (_stations.isEmpty) {
+        final stations = await ApiService.getUserStations();
+        setState(() => _stations = stations);
+      }
+      final matchedStation = _stations
+          .where((s) => s.stationID == existing.stationId)
+          .firstOrNull;
+      if (matchedStation != null) {
+        setState(() => _selectedStation = matchedStation);
+      }
+
+      // ── Step 2: load customers for that station, then select customer ─────
+      if (matchedStation != null) {
+        final customers = await ApiService.getCustomersByStation(
+          matchedStation.stationID,
+        );
+        setState(() => _customers = customers);
+        final matchedCustomer = customers
+            .where((c) => c.customerID == existing.customerId)
+            .firstOrNull;
+        if (matchedCustomer != null) {
+          setState(() => _selectedCustomer = matchedCustomer);
+        }
+      }
+
+      // ── Step 3: load items-to-return for this customer (creates controllers) ─
+      await _loadItemsToReturn();
+
+      // ── Step 4: fetch full return details (barcodes + untagged qtys) ──────
       final details = await ApiService.getReturnDetails(
-        returnId: widget.existingReturn!.returnId,
+        returnId: existing.returnId,
       );
 
+      // Return type
       final returnType = (details['ReturnType'] as String? ?? 'both')
           .toLowerCase();
       setState(() => _returnStatus = returnType == 'own' ? 'both' : returnType);
 
-      // Pre-fill tagged barcodes
+      // Tagged barcodes
       final tagged = (details['Tagged'] as List? ?? []);
       for (final t in tagged) {
         final barcode = t['Barcode'] as String;
@@ -215,28 +247,28 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
         _lubNames[lubId] = lubName;
       }
 
-      // Store pending untagged qtys — applied after _loadItemsToReturn creates controllers
+      // ── Step 5: apply untagged qtys now that controllers exist ────────────
       final untagged = (details['Untagged'] as List? ?? []);
       for (final u in untagged) {
         final lubId = (u['LubId'] ?? u['lubId']) as int;
         final qty = (u['UntaggedCount'] ?? u['untaggedCount'] ?? 0) as int;
         _lubNames[lubId] = (u['LubName'] ?? u['lubName']) as String;
-        _pendingUntaggedQtys[lubId] = qty;
+        _untaggedQtyControllers[lubId]?.text = qty > 0 ? '$qty' : '';
       }
 
       setState(() => _isLoadingEditData = false);
       _applySearch();
     } catch (e) {
       setState(() => _isLoadingEditData = false);
-      log('Error loading edit data: \$e');
-      _showSnack('Failed to load return details: \$e', isError: true);
+      log('Error loading edit data: $e');
+      _showSnack('Failed to load return details: $e', isError: true);
     }
   }
 
   void _applyPendingUntaggedQtys() {
     if (_pendingUntaggedQtys.isEmpty) return;
     _pendingUntaggedQtys.forEach((lubId, qty) {
-      _untaggedQtyControllers[lubId]?.text = qty > 0 ? '\$qty' : '';
+      _untaggedQtyControllers[lubId]?.text = qty > 0 ? '$qty' : '';
     });
     _pendingUntaggedQtys.clear();
     setState(() {});

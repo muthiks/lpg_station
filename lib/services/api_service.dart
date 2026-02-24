@@ -513,26 +513,32 @@ class ApiService {
     }
   }
 
-  // Validate return cylinder
   static Future<Map<String, dynamic>> validateReturnCylinder({
     required String barcode,
     required int stationId,
+    int? excludeReturnId, // ← pass existingReturn.returnId in edit mode
   }) async {
-    final uri = Uri.parse('$_baseUrl/ValidateStationReturnCylinder').replace(
-      queryParameters: {'barcode': barcode, 'stationId': stationId.toString()},
-    );
+    final params = {
+      'barcode': barcode,
+      'stationId': stationId.toString(),
+      if (excludeReturnId != null)
+        'excludeReturnId': excludeReturnId.toString(),
+    };
+
+    final uri = Uri.parse(
+      '$_baseUrl/ValidateStationReturnCylinder',
+    ).replace(queryParameters: params);
 
     final response = await http.get(uri, headers: _headers);
 
-    // log(
-    //   'validateReturnCylinder: ${response.statusCode} body: ${response.body}',
-    // );
+    log(
+      'validateReturnCylinder: ${response.statusCode} body: ${response.body}',
+    );
 
     if (response.statusCode == 200) {
       return json.decode(response.body) as Map<String, dynamic>;
     }
 
-    // Surface the server message to the UI as the error text
     String message;
     try {
       final body = json.decode(response.body);
@@ -542,7 +548,6 @@ class ApiService {
     } catch (_) {
       message = response.body;
     }
-
     throw Exception(message);
   }
 
