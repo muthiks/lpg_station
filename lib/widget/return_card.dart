@@ -19,7 +19,7 @@ class ReturnCard extends StatelessWidget {
 
   // ── Permission helpers ────────────────────────────────────────────────────
   static bool get _isDriver =>
-      AuthService.instance.role?.toLowerCase() == 'driver';
+      AuthService.instance.userRole?.toLowerCase() == 'driver';
 
   bool get _canDelete {
     if (!cylinderReturn.isEditable) return false;

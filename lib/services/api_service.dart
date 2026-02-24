@@ -420,53 +420,96 @@ class ApiService {
     }
   }
 
-  static Future<List<CylinderReturn>> fetchPendingReturns({
-    int? stationId,
-  }) async {
-    final response = await http.get(
-      Uri.parse('$_baseUrl/GetPendingStationReturns'),
-      headers: _headers,
+  // static Future<List<CylinderReturn>> fetchPendingReturns({
+  //   int? stationId,
+  // }) async {
+  //   final response = await http.get(
+  //     Uri.parse('$_baseUrl/GetPendingStationReturns'),
+  //     headers: _headers,
+  //   );
+
+  //   // log('fetchPendingReturns: ${response.statusCode} body: ${response.body}');
+
+  //   if (response.statusCode == 200) {
+  //     final List<dynamic> data = json.decode(response.body);
+  //     final returns = data
+  //         .map((e) => CylinderReturn.fromJson(e as Map<String, dynamic>))
+  //         .toList();
+  //     // Client-side station filter if provided
+  //     if (stationId != null) {
+  //       return returns.where((r) => r.stationId == stationId).toList();
+  //     }
+  //     return returns;
+  //   } else {
+  //     throw Exception('Failed to load pending returns: ${response.body}');
+  //   }
+  // }
+
+  // static Future<List<CylinderReturn>> fetchCompletedReturns({
+  //   int? stationId,
+  // }) async {
+  //   final response = await http.get(
+  //     Uri.parse('$_baseUrl/GetCompletedStationReturns'),
+  //     headers: _headers,
+  //   );
+
+  //   // log('fetchCompletedReturns: ${response.statusCode} body: ${response.body}');
+
+  //   if (response.statusCode == 200) {
+  //     final List<dynamic> data = json.decode(response.body);
+  //     final returns = data
+  //         .map((e) => CylinderReturn.fromJson(e as Map<String, dynamic>))
+  //         .toList();
+  //     // Client-side station filter if provided
+  //     if (stationId != null) {
+  //       return returns.where((r) => r.stationId == stationId).toList();
+  //     }
+  //     return returns;
+  //   } else {
+  //     throw Exception('Failed to load completed returns: ${response.body}');
+  //   }
+  // }
+
+  // Fetch all returns (New + Received + Approved in one call)
+  static Future<List<CylinderReturn>> fetchAllReturns({int? stationId}) async {
+    final uri = Uri.parse('$_baseUrl/GetAllStationReturns').replace(
+      queryParameters: stationId != null
+          ? {'stationId': stationId.toString()}
+          : {},
     );
-
-    // log('fetchPendingReturns: ${response.statusCode} body: ${response.body}');
-
+    final response = await http.get(uri, headers: _headers);
     if (response.statusCode == 200) {
-      final List<dynamic> data = json.decode(response.body);
-      final returns = data
-          .map((e) => CylinderReturn.fromJson(e as Map<String, dynamic>))
-          .toList();
-      // Client-side station filter if provided
-      if (stationId != null) {
-        return returns.where((r) => r.stationId == stationId).toList();
-      }
-      return returns;
-    } else {
-      throw Exception('Failed to load pending returns: ${response.body}');
+      final list = json.decode(response.body) as List;
+      return list.map((e) => CylinderReturn.fromJson(e)).toList();
+    }
+    throw Exception('Failed to load returns: ${response.body}');
+  }
+
+  // Advance to next status (Received or Approved)
+  static Future<void> advanceReturnStatus({
+    required int returnId,
+    required String newStatus,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/AdvanceReturnStatus').replace(
+      queryParameters: {
+        'returnId': returnId.toString(),
+        'newStatus': newStatus,
+      },
+    );
+    final response = await http.patch(uri, headers: _headers);
+    if (response.statusCode != 200) {
+      throw Exception('Failed to advance status: ${response.body}');
     }
   }
 
-  static Future<List<CylinderReturn>> fetchCompletedReturns({
-    int? stationId,
-  }) async {
-    final response = await http.get(
-      Uri.parse('$_baseUrl/GetCompletedStationReturns'),
-      headers: _headers,
-    );
-
-    // log('fetchCompletedReturns: ${response.statusCode} body: ${response.body}');
-
-    if (response.statusCode == 200) {
-      final List<dynamic> data = json.decode(response.body);
-      final returns = data
-          .map((e) => CylinderReturn.fromJson(e as Map<String, dynamic>))
-          .toList();
-      // Client-side station filter if provided
-      if (stationId != null) {
-        return returns.where((r) => r.stationId == stationId).toList();
-      }
-      return returns;
-    } else {
-      throw Exception('Failed to load completed returns: ${response.body}');
+  // Delete a return (New status only)
+  static Future<void> deleteReturn({required int returnId}) async {
+    final uri = Uri.parse(
+      '$_baseUrl/DeleteReturn',
+    ).replace(queryParameters: {'returnId': returnId.toString()});
+    final response = await http.delete(uri, headers: _headers);
+    if (response.statusCode != 200) {
+      throw Exception('Failed to delete return: ${response.body}');
     }
   }
 
