@@ -636,4 +636,35 @@ class ApiService {
       throw Exception(msg);
     }
   }
+
+  // ── getItemsToReturnForEdit ─────────────────────────────────────────────────
+  // Edit-mode version: adds back quantities reserved by this return so fully
+  // reserved cylinder types still appear in the list with their saved qty.
+  static Future<List<Map<String, dynamic>>> getItemsToReturnForEdit({
+    required int customerId,
+    required int stationId,
+    required int returnId,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/GetItemsToReturnForEdit').replace(
+      queryParameters: {
+        'customerId': customerId.toString(),
+        'stationId': stationId.toString(),
+        'returnId': returnId.toString(),
+      },
+    );
+    final response = await http.get(uri, headers: _headers);
+    if (response.statusCode == 200) {
+      final list = json.decode(response.body) as List;
+      return list
+          .map(
+            (e) => {
+              'LubId': (e['lubId'] ?? e['LubId']) as int,
+              'LubName': (e['lubName'] ?? e['LubName']) as String,
+              'Quantity': (e['quantity'] ?? e['Quantity']) as int,
+            },
+          )
+          .toList();
+    }
+    throw Exception('Failed to load edit items: ${response.body}');
+  }
 }

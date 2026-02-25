@@ -191,6 +191,43 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
     }
   }
 
+  // Loads items-to-return for edit mode using a dedicated API endpoint
+  // that adds back quantities reserved by this specific return.
+  Future<void> _loadItemsToReturnForEdit({
+    required int customerId,
+    required int stationId,
+    required int returnId,
+  }) async {
+    setState(() {
+      _isLoadingItemsToReturn = true;
+      // Dispose old controllers
+      for (final c in _untaggedQtyControllers.values) c.dispose();
+      _untaggedQtyControllers.clear();
+      _itemsToReturn = [];
+    });
+    try {
+      final items = await ApiService.getItemsToReturnForEdit(
+        customerId: customerId,
+        stationId: stationId,
+        returnId: returnId,
+      );
+      setState(() {
+        _itemsToReturn = items;
+        _isLoadingItemsToReturn = false;
+        for (final item in items) {
+          final lubId = (item['LubId'] ?? item['lubId']) as int;
+          final lubName = (item['LubName'] ?? item['lubName']) as String;
+          _lubNames[lubId] = lubName;
+          _untaggedQtyControllers[lubId] = TextEditingController();
+        }
+      });
+    } catch (e) {
+      setState(() => _isLoadingItemsToReturn = false);
+      log('Error loading edit items: $e');
+      _showSnack('Failed to load cylinder types: $e', isError: true);
+    }
+  }
+
   // ═══════════════════════════ EDIT MODE LOADER ══════════════════════════
 
   Future<void> _loadEditData() async {
@@ -223,18 +260,38 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
         }
       }
 
-      // ── Step 3: load items-to-return for this customer (creates controllers) ─
-      await _loadItemsToReturn();
+      // ── Step 3: load items-to-return for edit mode ─────────────────────────
+      // Uses a dedicated endpoint that adds back quantities reserved by THIS
+      // return, so cylinder types fully reserved (available=0) still appear.
+      await _loadItemsToReturnForEdit(
+        customerId: existing.customerId,
+        stationId: existing.stationId,
+        returnId: existing.returnId,
+      );
 
       // ── Step 4: fetch full return details (barcodes + untagged qtys) ──────
       final details = await ApiService.getReturnDetails(
         returnId: existing.returnId,
       );
 
-      // Return type
-      final returnType = (details['ReturnType'] as String? ?? 'both')
-          .toLowerCase();
-      setState(() => _returnStatus = returnType == 'own' ? 'both' : returnType);
+      // Return type — map API value to screen state
+      // API stores: 'tagged' | 'not-tagged' | 'both' (same as screen)
+      // but also legacy 'own' maps to 'both'
+      final rawType = (details['ReturnType'] as String? ?? 'both')
+          .toLowerCase()
+          .trim();
+      final mappedType = rawType == 'own'
+          ? 'both'
+          : rawType == 'not tagged'
+          ? 'not-tagged'
+          : rawType == 'nottagged'
+          ? 'not-tagged'
+          : (rawType == 'tagged' ||
+                rawType == 'not-tagged' ||
+                rawType == 'both')
+          ? rawType
+          : 'both';
+      setState(() => _returnStatus = mappedType);
 
       // Tagged barcodes
       final tagged = (details['Tagged'] as List? ?? []);
@@ -322,6 +379,9 @@ class _ReturnAddScreenState extends State<ReturnAddScreen> {
       final result = await ApiService.validateReturnCylinder(
         barcode: barcode,
         stationId: _selectedStation!.stationID,
+        // In edit mode, exclude this return so its own barcodes don't
+        // block themselves from being re-scanned
+        excludeReturnId: widget.existingReturn?.returnId,
       );
       final lubId = result['LubId'] as int;
       final lubName = result['LubName'] as String;

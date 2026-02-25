@@ -274,11 +274,13 @@ class _ReturnsListState extends State<ReturnsList>
                             cardBuilder: (r) => ReturnCard(
                               cylinderReturn: r,
                               onTap: null, // no edit once received
-                              onDelete: null, // cannot delete received
+                              onDelete: _isAdmin
+                                  ? () => _deleteReturn(r)
+                                  : null,
                               onAdvanceStatus: _isAdmin
                                   ? () => _advanceStatus(r)
                                   : null,
-                              canDelete: false,
+                              canDelete: _isAdmin,
                               // Only admin can approve (Received → Approved)
                               canAdvance: _isAdmin && r.nextStatus != null,
                             ),
