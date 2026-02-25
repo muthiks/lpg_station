@@ -3,7 +3,7 @@ class RoleConfig {
   static const String admin = 'Admin';
   static const String driver = 'Driver';
   static const String user = 'User';
-  static const String manager = 'Store Manager';
+  static const String manager = 'Manager';
   // Add more roles as needed
   // Add more roles as needed
 

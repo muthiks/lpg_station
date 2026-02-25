@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lpg_station/models/sale_model.dart';
 import 'package:lpg_station/screens/add_sale.dart';
 import 'package:lpg_station/screens/sale_list.dart';
+import 'package:lpg_station/services/auth_service.dart';
 
 class SaleContainer extends StatefulWidget {
   const SaleContainer({super.key});
@@ -46,7 +47,10 @@ class _SaleContainerState extends State<SaleContainer> {
 
     return SaleList(
       onNavigateToAdd: _navigateToAdd,
-      onEditSale: _navigateToEdit, // card tap → edit mode (no Navigator.push)
+      onEditSale: _navigateToEdit,
+      userRole:
+          AuthService.instance.userRole ??
+          'Driver', // card tap → edit mode (no Navigator.push)
     );
   }
 }

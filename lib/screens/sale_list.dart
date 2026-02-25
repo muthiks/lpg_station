@@ -10,8 +10,6 @@ import 'package:lpg_station/widget/dispatch_sheet.dart';
 
 class SaleList extends StatefulWidget {
   final VoidCallback? onNavigateToAdd;
-  // onEditSale: called with the sale to edit — parent swaps the view
-  // same pattern as onNavigateToAdd so bottom nav stays visible
   final void Function(SaleDto sale)? onEditSale;
   final String userRole;
 
@@ -19,7 +17,7 @@ class SaleList extends StatefulWidget {
     super.key,
     this.onNavigateToAdd,
     this.onEditSale,
-    this.userRole = 'Manager',
+    required this.userRole,
   });
 
   @override
@@ -42,15 +40,19 @@ class _SaleListState extends State<SaleList> {
   final _currencyFormat = NumberFormat('#,##0', 'en_US');
   final _dateFormat = DateFormat('d/M/yyyy');
 
-  bool get _isDriver => widget.userRole == 'Driver';
+  // ── Permission getters ────────────────────────────────────────────────
+  bool get _isDriver => widget.userRole.toLowerCase() == 'driver';
+  bool get _isManager => widget.userRole.toLowerCase() == 'manager';
+  bool get _isAdmin => widget.userRole.toLowerCase() == 'admin';
   bool get _isSuperOrAdmin =>
-      widget.userRole == 'Super' || widget.userRole == 'Admin';
+      ['super', 'admin'].contains(widget.userRole.toLowerCase());
   bool get _canManageSales =>
-      ['Super', 'Admin', 'Manager'].contains(widget.userRole);
+      ['super', 'admin', 'manager'].contains(widget.userRole.toLowerCase());
 
   @override
   void initState() {
     super.initState();
+
     _loadStations();
   }
 
@@ -119,22 +121,19 @@ class _SaleListState extends State<SaleList> {
 
   List<SaleDto> get _filteredSales => _sales.where((s) {
     if (_selectedCustomer != null &&
-        s.customerID != _selectedCustomer!.customerID)
+        s.customerID != _selectedCustomer!.customerID) {
       return false;
+    }
     return true;
   }).toList();
 
-  // ════════════════════════════ NAVIGATION — FIX ═══════════════════════
-  // Push directly to AddSale widget instead of using named route
-  // This avoids the "Could not find a generator for route" error
+  // ════════════════════════════ NAVIGATION ═════════════════════════════
 
   void _openEditSale(SaleDto sale) {
     if (!_canManageSales) {
       _showSnack('No permission to edit', isError: true);
       return;
     }
-    // Delegate to parent shell via callback — same as onNavigateToAdd.
-    // Parent swaps the body widget so bottom nav stays visible.
     if (widget.onEditSale != null) {
       widget.onEditSale!(sale);
     } else {
@@ -145,21 +144,37 @@ class _SaleListState extends State<SaleList> {
   // ════════════════════════════ ACTIONS ════════════════════════════════
 
   Future<void> _confirmDelete(SaleDto sale) async {
-    if (sale.isDelivered && !_isSuperOrAdmin) {
-      _showSnack('Only Admin/Super can delete delivered sales', isError: true);
+    // Driver cannot delete
+    if (_isDriver) {
+      _showSnack('Drivers cannot delete sales', isError: true);
       return;
     }
-    if (!_canManageSales) {
-      _showSnack('No permission to delete', isError: true);
+
+    // Manager can only delete Draft
+    if (_isManager && sale.status != 'Draft') {
+      _showSnack('Managers can only delete Draft sales', isError: true);
       return;
     }
+
+    // Admin can delete Draft, Confirmed, or Delivered
+    if (_isAdmin) {
+      final allowedStatuses = ['Draft', 'Confirmed', 'Delivered'];
+      if (!allowedStatuses.contains(sale.status)) {
+        _showSnack(
+          'Cannot delete sale in ${sale.status} status',
+          isError: true,
+        );
+        return;
+      }
+    }
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Delete Sale', style: TextStyle(color: Colors.black)),
         content: Text(
           'Delete invoice ${sale.invoiceNo}? This cannot be undone.',
-          style: TextStyle(color: Colors.black),
+          style: const TextStyle(color: Colors.black),
         ),
         actions: [
           TextButton(
@@ -174,6 +189,7 @@ class _SaleListState extends State<SaleList> {
         ],
       ),
     );
+
     if (ok == true) {
       try {
         await ApiService.deleteSale(sale.lpgSaleID);
@@ -188,17 +204,25 @@ class _SaleListState extends State<SaleList> {
   }
 
   Future<void> _confirmAdvanceStage(SaleDto sale) async {
-    if (_isDriver && sale.status != 'Dispatched') {
-      _showSnack(
-        'You can only mark Dispatched sales as Delivered',
-        isError: true,
-      );
-      return;
+    // ── Permission check ────────────────────────────────────────────────
+
+    // Driver can ONLY:
+    // - Dispatch (Confirmed → Dispatched)
+    // - Deliver (Dispatched → Delivered)
+    if (_isDriver) {
+      if (sale.status == 'Draft') {
+        _showSnack('Drivers cannot confirm sales', isError: true);
+        return;
+      }
+      // Driver CAN dispatch and deliver - allow those to proceed
     }
+
+    // Manager/Admin can do everything
     if (!_canManageSales && !_isDriver) {
       _showSnack('No permission to update status', isError: true);
       return;
     }
+
     if (!sale.canAdvanceStage) return;
 
     final ok = await showDialog<bool>(
@@ -206,11 +230,11 @@ class _SaleListState extends State<SaleList> {
       builder: (_) => AlertDialog(
         title: Text(
           'Move to ${sale.nextStatus}?',
-          style: TextStyle(color: Colors.black, fontSize: 17),
+          style: const TextStyle(color: Colors.black, fontSize: 17),
         ),
         content: Text(
           'Update ${sale.invoiceNo} from "${sale.status}" to "${sale.nextStatus}"?',
-          style: TextStyle(color: Colors.black),
+          style: const TextStyle(color: Colors.black),
         ),
         actions: [
           TextButton(
@@ -258,6 +282,56 @@ class _SaleListState extends State<SaleList> {
       _showSnack('Moved to ${sale.nextStatus}');
     } catch (e) {
       _showSnack('Failed: $e', isError: true);
+    }
+  }
+
+  Future<void> _revertDispatch(SaleDto sale) async {
+    if (!_isAdmin) {
+      _showSnack('Only Admin can revert dispatch', isError: true);
+      return;
+    }
+
+    if (sale.status != 'Dispatched') {
+      _showSnack('Can only revert Dispatched sales', isError: true);
+      return;
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text(
+          'Revert Dispatch?',
+          style: TextStyle(color: Colors.black, fontSize: 17),
+        ),
+        content: Text(
+          'This will move ${sale.invoiceNo} back to Confirmed status and reset all tagged cylinders to Store.\n\nContinue?',
+          style: const TextStyle(color: Colors.black),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text(
+              'Revert Dispatch',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (ok == true) {
+      try {
+        await ApiService.revertDispatch(sale.lpgSaleID);
+        await _loadSales(_selectedStation?.stationID);
+        _showSnack('Dispatch reverted successfully');
+      } catch (e) {
+        _showSnack('Failed: $e', isError: true);
+      }
     }
   }
 
@@ -458,38 +532,25 @@ class _SaleListState extends State<SaleList> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingStations)
+    if (_isLoadingStations) {
       return Center(
         child: CircularProgressIndicator(color: AppTheme.primaryBlue),
       );
+    }
     return Column(
       children: [
-        _buildFilterBar(), // Now includes Add button at top
+        _buildFilterBar(),
         Expanded(child: _buildSalesContent()),
-        // REMOVED: Bottom Add button - now at top in _buildFilterBar
       ],
     );
-    // if (_isLoadingStations)
-    //   return Center(
-    //     child: CircularProgressIndicator(color: AppTheme.primaryBlue),
-    //   );
-    // return Column(
-    //   children: [
-    //     _buildFilterBar(),
-    //     Expanded(child: _buildSalesContent()),
-    //     if (!_isDriver) _buildAddButton(),
-    //   ],
-    // );
   }
-
-  // REPLACE your existing _buildFilterBar() method with this:
 
   Widget _buildFilterBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Column(
         children: [
-          // ── "Sales" Header + Add Button ───────────────────────────────────
+          // ── "Sales" Header + Add Button (hidden for drivers) ──────────
           if (!_isDriver)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -631,10 +692,11 @@ class _SaleListState extends State<SaleList> {
   }
 
   Widget _buildSalesContent() {
-    if (_isLoadingSales)
+    if (_isLoadingSales) {
       return Center(
         child: CircularProgressIndicator(color: AppTheme.primaryBlue),
       );
+    }
     if (_errorMessage != null) {
       return Center(
         child: Column(
@@ -695,41 +757,23 @@ class _SaleListState extends State<SaleList> {
     );
   }
 
-  Widget _buildAddButton() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      child: ElevatedButton(
-        onPressed: widget.onNavigateToAdd,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.primaryOrange,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          elevation: 4,
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.add_circle_outline, size: 22),
-            SizedBox(width: 8),
-            Text(
-              'Add Sale',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildSwipeableCard(SaleDto sale) {
+    // ── RIGHT SWIPE: Advance stage ────────────────────────────────────────
+    // Driver: Can swipe right ONLY for Confirmed (→ Dispatched) or Dispatched (→ Delivered)
+    // Manager/Admin: Can swipe right if canAdvanceStage
     final canRight = _isDriver
-        ? sale.status == 'Dispatched'
+        ? (sale.status == 'Confirmed' || sale.status == 'Dispatched')
         : (_canManageSales && sale.canAdvanceStage);
-    final canLeft = sale.isDelivered ? _isSuperOrAdmin : _canManageSales;
+
+    // ── LEFT SWIPE: Delete ────────────────────────────────────────────────
+    // Driver: CANNOT delete
+    // Manager: Can delete Draft only
+    // Admin: Can delete Draft, Confirmed, or Delivered
+    final canLeft = _isDriver
+        ? false
+        : (_isManager && sale.status == 'Draft')
+        ? true
+        : _isSuperOrAdmin;
 
     return Dismissible(
       key: Key('sale_${sale.lpgSaleID}'),
@@ -783,10 +827,11 @@ class _SaleListState extends State<SaleList> {
       ),
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
+          // RIGHT SWIPE: Advance
           if (!canRight) {
             _showSnack(
               _isDriver
-                  ? 'Can only mark Dispatched as Delivered'
+                  ? 'Drivers can only dispatch or deliver'
                   : 'Cannot advance',
               isError: true,
             );
@@ -795,10 +840,13 @@ class _SaleListState extends State<SaleList> {
           await _confirmAdvanceStage(sale);
           return false;
         } else {
+          // LEFT SWIPE: Delete
           if (!canLeft) {
             _showSnack(
-              sale.isDelivered
-                  ? 'Only Admin/Super can delete delivered'
+              _isDriver
+                  ? 'Drivers cannot delete sales'
+                  : _isManager
+                  ? 'Managers can only delete Draft sales'
                   : 'No permission',
               isError: true,
             );
@@ -820,7 +868,11 @@ class _SaleListState extends State<SaleList> {
                 .firstOrNull,
         currencyFormat: _currencyFormat,
         dateFormat: _dateFormat,
+        // Only allow tapping to edit if Manager/Admin (not Driver)
         onTap: _canManageSales ? () => _openEditSale(sale) : null,
+        // ── ADD THESE TWO LINES ────────────────────────────────────────────
+        showRevertButton: _isAdmin && sale.status == 'Dispatched',
+        onRevertDispatch: () => _revertDispatch(sale),
       ),
     );
   }
@@ -832,7 +884,7 @@ class _SaleListState extends State<SaleList> {
       height: MediaQuery.of(context).size.height * height,
       decoration: BoxDecoration(
         color: AppTheme.primaryBlue,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: child,
     );
@@ -996,6 +1048,8 @@ class _SaleCardBody extends StatefulWidget {
   final NumberFormat currencyFormat;
   final DateFormat dateFormat;
   final VoidCallback? onTap;
+  final VoidCallback? onRevertDispatch; // ← ADD THIS
+  final bool showRevertButton;
 
   const _SaleCardBody({
     required this.sale,
@@ -1004,6 +1058,8 @@ class _SaleCardBody extends StatefulWidget {
     required this.currencyFormat,
     required this.dateFormat,
     this.onTap,
+    this.onRevertDispatch, // ← ADD THIS
+    this.showRevertButton = false,
   });
 
   @override
@@ -1085,7 +1141,6 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Invoice + Customer Type on same row
                   Row(
                     children: [
                       Icon(
@@ -1124,7 +1179,6 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
                     ],
                   ),
                   const SizedBox(height: 5),
-                  // Date + Total
                   Row(
                     children: [
                       Icon(
@@ -1151,7 +1205,6 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
                       ),
                     ],
                   ),
-                  // Station
                   if ((sale.stationName ?? widget.stationName) != null) ...[
                     const SizedBox(height: 5),
                     _iconRow(
@@ -1227,7 +1280,6 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
                   ),
                 )
               else ...[
-                // Header
                 Container(
                   padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
                   color: Colors.white.withOpacity(0.05),
@@ -1335,7 +1387,8 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
                     ),
                   ] else
                     const Expanded(child: SizedBox()),
-                  // Delivery guy — right side
+
+                  // Delivery guy — middle
                   if (sale.deliveryGuy != null &&
                       sale.deliveryGuy!.isNotEmpty &&
                       sale.deliveryGuy != 'N/A') ...[
@@ -1354,6 +1407,43 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
                         ),
                         textAlign: TextAlign.right,
                         overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+
+                  // ── Revert Dispatch Button (Admin only, Dispatched sales only) ────
+                  if (widget.showRevertButton) ...[
+                    const SizedBox(width: 8),
+                    InkWell(
+                      onTap: widget.onRevertDispatch,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: Colors.orange.withOpacity(0.5),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.undo, color: Colors.orange, size: 14),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Revert',
+                              style: TextStyle(
+                                color: Colors.orange,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],

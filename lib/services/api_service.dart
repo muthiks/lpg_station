@@ -667,4 +667,33 @@ class ApiService {
     }
     throw Exception('Failed to load edit items: ${response.body}');
   }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Revert Dispatch (Admin only)
+  // ────────────────────────────────────────────────────────────────────────────
+  static Future<void> revertDispatch(int saleId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/RevertDispatch?saleId=$saleId'),
+        headers: _headers,
+      );
+
+      if (response.statusCode != 200) {
+        final data = json.decode(response.body);
+        throw Exception(
+          data['message'] ?? data['Message'] ?? 'Failed to revert dispatch',
+        );
+      }
+
+      final data = json.decode(response.body);
+      if (data['isValid'] == false || data['IsValid'] == false) {
+        throw Exception(
+          data['message'] ?? data['Message'] ?? 'Failed to revert dispatch',
+        );
+      }
+    } catch (e) {
+      log('RevertDispatch error: $e');
+      rethrow;
+    }
+  }
 }
