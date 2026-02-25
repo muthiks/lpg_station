@@ -800,18 +800,19 @@ class _AddSaleState extends State<AddSale> {
   }
 
   // ─────────────────── Scaffold wrapper ────────────────────────────────
+  // REPLACE your existing _scaffold() method with this:
 
   Widget _scaffold({required Widget child}) {
     return Stack(
       children: [
         Column(
           children: [
-            // ── CHANGE 1: back icon wired to widget.onBack ────────────────
+            // ── Header: Back + Title + Submit/Update Button ──────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 10, 16, 6),
               child: Row(
                 children: [
-                  // Back arrow — calls onBack which pops to sales list
+                  // Back arrow
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
@@ -820,46 +821,94 @@ class _AddSaleState extends State<AddSale> {
                       color: Colors.white,
                       size: 26,
                     ),
-                    onPressed: widget.onBack, // ← FIXED: was null
+                    onPressed: widget.onBack,
                   ),
                   const SizedBox(width: 8),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.isEditMode ? 'Edit Sale' : 'Add New Sale',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      if (widget.isEditMode && widget.editSale != null)
+
+                  // Title
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          widget.editSale!.invoiceNo,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.white.withOpacity(0.6),
+                          widget.isEditMode ? 'Edit Sale' : 'Add New Sale',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
                         ),
-                    ],
+                        if (widget.isEditMode && widget.editSale != null)
+                          Text(
+                            widget.editSale!.invoiceNo,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white.withOpacity(0.6),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                  const Spacer(),
+
+                  // Loading indicator (when loading stock)
                   if (_isLoadingStock)
-                    const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white70,
+                    const Padding(
+                      padding: EdgeInsets.only(right: 12),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white70,
+                        ),
                       ),
                     ),
+
+                  // ── Submit/Update Button ──────────────────────────────────
+                  TextButton.icon(
+                    onPressed: _isSubmitting ? null : _saveSale,
+                    icon: _isSubmitting
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(
+                            widget.isEditMode
+                                ? Icons.check_circle
+                                : Icons.add_circle,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                    label: Text(
+                      _isSubmitting
+                          ? 'Saving...'
+                          : (widget.isEditMode ? 'Update' : 'Submit'),
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                    ),
+                    style: TextButton.styleFrom(
+                      backgroundColor: _isSubmitting
+                          ? AppTheme.primaryOrange.withOpacity(0.5)
+                          : AppTheme.primaryOrange.withOpacity(0.25),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
             Expanded(child: child),
           ],
         ),
+
         // Hidden scanner field
         SizedBox(
           height: 0,
@@ -879,6 +928,8 @@ class _AddSaleState extends State<AddSale> {
   }
 
   // ─────────────────── Form body ───────────────────────────────────────
+
+  // UPDATE your _buildForm() method - REMOVE the bottom Submit button:
 
   Widget _buildForm() {
     return Column(
@@ -1036,7 +1087,6 @@ class _AddSaleState extends State<AddSale> {
                     ),
                   )
                 else
-                  // ── CHANGE 2: confirmDismiss shows dialog before removing ─
                   ...saleItems.asMap().entries.map((e) {
                     final idx = e.key;
                     final item = e.value;
@@ -1045,8 +1095,6 @@ class _AddSaleState extends State<AddSale> {
                         'item_${idx}_${item.cylinderTypeId}_${item.cylinderStatus}_${item.price}_${item.accessoryId ?? 'none'}',
                       ),
                       direction: DismissDirection.endToStart,
-                      // confirmDismiss handles removal itself — always return false
-                      // so Dismissible never auto-removes the widget
                       confirmDismiss: (_) =>
                           _confirmItemDelete(idx).then((_) => false),
                       background: Container(
@@ -1095,87 +1143,38 @@ class _AddSaleState extends State<AddSale> {
 
                 if (saleItems.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      // color: Colors.black.withOpacity(0.25),
-                      // borderRadius: BorderRadius.circular(12),
-                      // border: Border.all(
-                      //   color: AppTheme.primaryOrange,
-                      //   width: 1.5,
-                      // ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Total Amount',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                          ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Total Amount',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
                         ),
-                        Text(
-                          'KSh ${NumberFormat('#,##0').format(totalAmount)}',
-                          style: TextStyle(
-                            color: Colors.purple,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                      ),
+                      Text(
+                        'KSh ${NumberFormat('#,##0').format(totalAmount)}',
+                        style: const TextStyle(
+                          color: Colors.purple,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ],
 
                 const SizedBox(height: 16),
+
+                // ← REMOVED: Bottom Submit/Update button - now at top
               ],
             ),
           ),
         ),
 
-        // ── Submit Button ─────────────────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isSubmitting ? null : _saveSale,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryOrange,
-                disabledBackgroundColor: AppTheme.primaryOrange.withOpacity(
-                  0.5,
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 3,
-              ),
-              child: _isSubmitting
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : Text(
-                      widget.isEditMode ? 'Update Sale' : 'Submit Sale',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-            ),
-          ),
-        ),
+        // ← REMOVED: The entire Padding widget with bottom button
       ],
     );
   }
