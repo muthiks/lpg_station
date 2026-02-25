@@ -348,7 +348,7 @@ class _ReturnsListState extends State<ReturnsList>
               title,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 16,
+                fontSize: 14,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -368,7 +368,7 @@ class _ReturnsListState extends State<ReturnsList>
                   vertical: 6,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
             ),
