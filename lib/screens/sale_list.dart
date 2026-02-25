@@ -464,18 +464,74 @@ class _SaleListState extends State<SaleList> {
       );
     return Column(
       children: [
-        _buildFilterBar(),
+        _buildFilterBar(), // Now includes Add button at top
         Expanded(child: _buildSalesContent()),
-        if (!_isDriver) _buildAddButton(),
+        // REMOVED: Bottom Add button - now at top in _buildFilterBar
       ],
     );
+    // if (_isLoadingStations)
+    //   return Center(
+    //     child: CircularProgressIndicator(color: AppTheme.primaryBlue),
+    //   );
+    // return Column(
+    //   children: [
+    //     _buildFilterBar(),
+    //     Expanded(child: _buildSalesContent()),
+    //     if (!_isDriver) _buildAddButton(),
+    //   ],
+    // );
   }
+
+  // REPLACE your existing _buildFilterBar() method with this:
 
   Widget _buildFilterBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Column(
         children: [
+          // ── "Sales" Header + Add Button ───────────────────────────────────
+          if (!_isDriver)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Sales',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: widget.onNavigateToAdd,
+                    icon: const Icon(
+                      Icons.add_circle,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    label: const Text(
+                      'Add',
+                      style: TextStyle(color: Colors.white, fontSize: 13),
+                    ),
+                    style: TextButton.styleFrom(
+                      backgroundColor: AppTheme.primaryOrange.withOpacity(0.25),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // ── Station Dropdown ──────────────────────────────────────────────
           GestureDetector(
             onTap: _stations.length > 1 ? _showStationSelector : null,
             child: Container(
@@ -522,6 +578,8 @@ class _SaleListState extends State<SaleList> {
             ),
           ),
           const SizedBox(height: 10),
+
+          // ── Customer Dropdown ─────────────────────────────────────────────
           GestureDetector(
             onTap: _selectedStation == null || _isLoadingCustomers
                 ? null
