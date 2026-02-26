@@ -15,9 +15,9 @@ class AuthService {
   // ------------------------
   // API
   // ------------------------
-  //static const String _baseUrl = 'https://10.0.2.2:7179/api/Account';
-  static const String _baseUrl =
-      'https://luqman-staging.lqadmin.com/api/Account';
+  static const String _baseUrl = 'https://10.0.2.2:7179/api/Account';
+  // static const String _baseUrl =
+  //     'https://luqman-staging.lqadmin.com/api/Account';
 
   factory AuthService() {
     return instance;
@@ -45,18 +45,32 @@ class AuthService {
   // Check if user is logged in
   Future<bool> isLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-    final userId = prefs.getString('userId');
 
-    if (token != null && userId != null) {
-      // Load user data
-      _token = token;
-      _userId = userId;
-      _userRole = prefs.getString('userRole');
-      return true;
+    // Read from 'userData' JSON (same as autoLogin)
+    if (!prefs.containsKey('userData')) {
+      return false;
     }
 
-    return false;
+    try {
+      final extractedUserData =
+          json.decode(prefs.getString('userData')!) as Map;
+      final expiryDate = DateTime.parse(extractedUserData['expiryDate']);
+
+      if (expiryDate.isBefore(DateTime.now())) {
+        return false;
+      }
+
+      // Load user data into memory
+      _token = extractedUserData['token'];
+      _userId = extractedUserData['userId'];
+      _userRole = extractedUserData['userRole']; // ← This will now work!
+      _expiryDate = expiryDate;
+
+      return true;
+    } catch (e) {
+      print('Error in isLoggedIn: $e');
+      return false;
+    }
   }
 
   Future<Map<String, dynamic>> login(String userName, String password) async {
