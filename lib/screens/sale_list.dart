@@ -42,12 +42,12 @@ class _SaleListState extends State<SaleList> {
 
   // ── Permission getters ────────────────────────────────────────────────
   bool get _isDriver => widget.userRole.toLowerCase() == 'driver';
-  bool get _isManager => widget.userRole.toLowerCase() == 'manager';
+  bool get _isManager => widget.userRole.toLowerCase() == 'user';
   bool get _isAdmin => widget.userRole.toLowerCase() == 'admin';
   bool get _isSuperOrAdmin =>
       ['super', 'admin'].contains(widget.userRole.toLowerCase());
   bool get _canManageSales =>
-      ['super', 'admin', 'manager'].contains(widget.userRole.toLowerCase());
+      ['super', 'admin', 'user'].contains(widget.userRole.toLowerCase());
 
   @override
   void initState() {
@@ -108,9 +108,9 @@ class _SaleListState extends State<SaleList> {
         _sales = sales;
         _isLoadingSales = false;
       });
-      for (final s in sales) {
-        log('Sale ${s.invoiceNo} → ${s.saleDetails.length} items');
-      }
+      // for (final s in sales) {
+      //   log('Sale ${s.invoiceNo} → ${s.saleDetails.length} items');
+      // }
     } catch (e) {
       setState(() {
         _isLoadingSales = false;
@@ -1352,7 +1352,12 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
 
             // ── FOOTER: Phone (left) + Delivery Guy (right) ──────────────
             Container(
-              padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
+              padding: const EdgeInsets.fromLTRB(
+                14,
+                9,
+                14,
+                9,
+              ), // ← Keep original padding
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.04),
                 borderRadius: const BorderRadius.only(
@@ -1366,8 +1371,10 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
                 ),
               ),
               child: Row(
+                mainAxisSize:
+                    MainAxisSize.min, // ← ADD THIS to reduce row width
                 children: [
-                  // Phone — left side
+                  // ── Phone — left side ────────────────────────────────────────────
                   if (sale.customerPhone != null &&
                       sale.customerPhone!.isNotEmpty) ...[
                     Icon(
@@ -1376,19 +1383,19 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
                       color: Colors.white.withOpacity(0.6),
                     ),
                     const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        sale.customerPhone!,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.75),
-                          fontSize: 12,
-                        ),
+                    Text(
+                      sale.customerPhone!,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.75),
+                        fontSize: 12,
                       ),
                     ),
-                  ] else
-                    const Expanded(child: SizedBox()),
+                  ],
 
-                  // Delivery guy — middle
+                  // ── Spacer to push everything else to the right ─────────────────
+                  const Spacer(),
+
+                  // ── Delivery Guy — right side ───────────────────────────────────
                   if (sale.deliveryGuy != null &&
                       sale.deliveryGuy!.isNotEmpty &&
                       sale.deliveryGuy != 'N/A') ...[
@@ -1398,20 +1405,17 @@ class _SaleCardBodyState extends State<_SaleCardBody> {
                       color: Colors.white.withOpacity(0.6),
                     ),
                     const SizedBox(width: 5),
-                    Flexible(
-                      child: Text(
-                        sale.deliveryGuy!,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.75),
-                          fontSize: 12,
-                        ),
-                        textAlign: TextAlign.right,
-                        overflow: TextOverflow.ellipsis,
+                    Text(
+                      sale.deliveryGuy!,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.75),
+                        fontSize: 12,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
 
-                  // ── Revert Dispatch Button (Admin only, Dispatched sales only) ────
+                  // ── Revert Dispatch Button (Admin only, Dispatched sales only) ──
                   if (widget.showRevertButton) ...[
                     const SizedBox(width: 8),
                     InkWell(

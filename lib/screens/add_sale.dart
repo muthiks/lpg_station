@@ -238,9 +238,9 @@ class _AddSaleState extends State<AddSale> {
     try {
       final stock = await ApiService.getStationStock(stationId);
       final items = stock.allItemsForSheet;
-      log(
-        'Stock: ${stock.cylinders.length} cylinders, ${stock.accessories.length} accessories → ${items.length} total',
-      );
+      // log(
+      //   'Stock: ${stock.cylinders.length} cylinders, ${stock.accessories.length} accessories → ${items.length} total',
+      // );
       setState(() {
         _allStockItems = items;
         _isLoadingStock = false;
@@ -711,7 +711,7 @@ class _AddSaleState extends State<AddSale> {
       // [FromBody] reads the body directly — no wrapper key needed
       final payload = saleData;
 
-      log('Submitting sale payload: $payload');
+      // log('Submitting sale payload: $payload');
 
       if (widget.isEditMode) {
         await ApiService.updateSale(payload);

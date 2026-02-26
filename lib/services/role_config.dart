@@ -3,7 +3,7 @@ class RoleConfig {
   static const String admin = 'Admin';
   static const String driver = 'Driver';
   static const String user = 'User';
-  static const String manager = 'Manager';
+  //static const String manager = 'Manager';
   // Add more roles as needed
   // Add more roles as needed
 
@@ -12,7 +12,7 @@ class RoleConfig {
     admin: [0, 1, 2, 3, 4, 5], // All pages
     driver: [0, 2, 5],
     user: [0, 1, 2, 3, 4, 5],
-    manager: [0, 1, 2, 3, 4, 5], // Only home and delivery
+    //manager: [0, 1, 2, 3, 4, 5], // Only home and delivery
   };
 
   // Define default page for each role after login
@@ -20,7 +20,7 @@ class RoleConfig {
     admin: 3, // Home
     driver: 0,
     user: 3,
-    manager: 3, // Delivery
+    // manager: 3, // Delivery
   };
 
   // Get accessible page indices for a role

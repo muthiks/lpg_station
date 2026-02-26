@@ -21,7 +21,7 @@ class _ReturnsListState extends State<ReturnsList>
   // ── Role helpers ─────────────────────────────────────────────────────────
   String get _role => AuthService.instance.userRole?.toLowerCase() ?? 'driver';
   bool get _isDriver => _role == 'driver';
-  bool get _isManager => _role == 'manager';
+  bool get _isManager => _role == 'user';
   bool get _isAdmin => _role == 'admin';
 
   // Driver  → 1 tab : My Returns (New only)
